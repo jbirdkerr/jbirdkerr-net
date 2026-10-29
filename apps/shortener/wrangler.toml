@@ -1,0 +1,19 @@
+name = "go-shortener"
+main = "src/worker.py"
+compatibility_date = "2026-10-28"
+compatibility_flags = ["python_workers"]
+
+# Attach the custom domain once you are ready to deploy:
+# routes = [{ pattern = "go.jbirdkerr.net", custom_domain = true }]
+
+[vars]
+# Non-secret configuration. The service-role key is NOT here: set it with
+#   npx wrangler secret put SUPABASE_SERVICE_KEY
+SUPABASE_URL = "https://YOUR-PROJECT-REF.supabase.co"
+BASE_URL = "https://go.jbirdkerr.net"
+# Comma-separated hosts (and their subdomains) that cannot be shortened.
+BLOCKED_HOSTS = ""
+# Extra hostnames that count as "this service" for loop protection (for example the workers.dev name).
+EXTRA_SELF_HOSTS = ""
+CREATE_RATE_LIMIT = "30"
+CREATE_RATE_WINDOW_SECONDS = "3600"

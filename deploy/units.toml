@@ -47,11 +47,11 @@ deploy = "apps/metrics-worker:deploy"
 depends_on = ["db"]
 environments = ["preview", "production"]
 
-# [units.url-shortener]
-# name = "url-shortener"
-# paths = ["apps/url-shortener/**"]
-# host = "cloudflare-worker"
-# build = "apps/url-shortener:dist"
-# deploy = "apps/url-shortener:deploy"
-# depends_on = ["db"]
-# environments = ["preview", "production"]
+[units.shortener]
+name = "shortener"
+paths = ["apps/shortener/**"]
+host = "cloudflare-worker"
+build = "apps/shortener:dist"
+deploy = "apps/shortener:deploy"
+depends_on = ["db"]
+environments = ["preview", "production"]

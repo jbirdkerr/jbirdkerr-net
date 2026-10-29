@@ -1,0 +1,26 @@
+[project]
+name = "shortener"
+version = "0.1.0"
+description = "URL shortener with privacy-conscious aggregate analytics (FastAPI on a Cloudflare Python Worker)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+]
+
+[project.optional-dependencies]
+# Kept as an extra (not only a dependency group) so Pants' python_requirements can read it.
+test = [
+    "pytest",
+    "httpx",
+]
+
+[dependency-groups]
+# Local Worker tooling (pywrangler) per Cloudflare's Python Workers docs.
+dev = [
+    "workers-py",
+    "workers-runtime-sdk",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
