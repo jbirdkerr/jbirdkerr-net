@@ -1,5 +1,5 @@
 name = "go-shortener"
-main = "src/worker.py"
+main = "src/shortener_worker.py"
 compatibility_date = "2026-10-28"
 compatibility_flags = ["python_workers"]
 

@@ -78,10 +78,10 @@ uv run --extra test pytest          # 87 tests, no network or Supabase needed
 
 ### 1. Database
 
-Migrations are plain SQL in `migrations/`, applied by you, deliberately. They are timestamped, and an applied
+Migrations are plain SQL in `db/supabase/migrations/` (the `shortener` ones), applied by you, deliberately. They are timestamped, and an applied
 migration is never edited; changes ship as a new file.
 
-1. Run `migrations/20261028120000_create_shortener_schema.sql`, then `..._shortener_rpcs.sql` (SQL editor or `psql`).
+1. Run `db/supabase/migrations/20261028120000_create_shortener_schema.sql`, then `..._shortener_rpcs.sql` (SQL editor or `psql`).
 2. In Supabase: **Settings → API → Exposed schemas**, add `shortener`. PostgREST will not serve the schema
    until you do. Without it every call fails with an error about the schema not being found.
 
@@ -126,14 +126,16 @@ on it for public redirects.
 ## Layout and Pants
 
 ```
-src/worker.py          Worker entrypoint (asgi.entrypoint)
+src/shortener_worker.py Worker entrypoint (asgi.entrypoint)
 src/shortener/         app, auth, db (PostgREST client), links/stats (pure logic), config
-migrations/            SQL, applied manually
 scripts/issue_key.py   key issuing
 tests/                 pytest; the database is faked in tests/conftest.py
-BUILD                  Pants targets (requirements, sources, tests, migrations)
+BUILD                  Pants targets (requirements, sources, tests, dist)
 ```
 
-For Pants, `apps/shortener/src` needs to be a source root (`[source].root_patterns` in `pants.toml`).
+For Pants, `apps/shortener/src` is a source root (`[source].root_patterns` in `pants.toml`); tests depend on
+`db/supabase:files` for the migrations they scan.
 Imports of `workers` and `pyodide` only exist inside the Cloudflare runtime, so those lines are marked
-`# pants: no-infer-dep`. Run `pants test apps/shortener:tests`.
+`# pants: no-infer-dep`. The entrypoint is `shortener_worker.py` rather than `worker.py` because
+`apps/metrics-worker` already owns the top-level module name `worker`, and Pants refuses to infer an ambiguous
+import. Run `pants test apps/shortener:tests`.

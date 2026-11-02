@@ -1,6 +1,6 @@
 # Pants targets for apps/shortener.
 #
-# Assumes `apps/shortener/src` is a Pants source root (add it to [source].root_patterns in
+# Requires `apps/shortener/src` as a Pants source root (it is listed in [source].root_patterns in
 # pants.toml). Imports of `workers` and `pyodide` only exist inside the Cloudflare runtime, so the
 # files that use them carry `# pants: no-infer-dep` on those lines.
 
@@ -14,11 +14,6 @@ python_sources(
     sources=["src/**/*.py", "scripts/*.py"],
 )
 
-files(
-    name="migrations",
-    sources=["migrations/*.sql"],
-)
-
 python_test_utils(
     name="test_utils",
     sources=["tests/conftest.py"],
@@ -27,5 +22,21 @@ python_test_utils(
 python_tests(
     name="tests",
     sources=["tests/test_*.py"],
-    dependencies=[":migrations"],
+    dependencies=[
+        "db/supabase:files",  # tests scan the shortener migrations
+        # starlette.testclient imports httpx2 lazily, so Pants cannot infer it from an import.
+        ":reqs#httpx2",
+    ],
+)
+
+files(
+    name="worker_files",
+    sources=["src/**/*.py", "pyproject.toml", "wrangler.toml"],
+)
+
+archive(
+    name="dist",
+    format="tar.gz",
+    files=[":worker_files"],
+    output_path="apps/shortener.tar.gz",
 )

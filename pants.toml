@@ -8,6 +8,7 @@ backend_packages = [
 [source]
 root_patterns = [
     "apps/*",
+    "apps/shortener/src",
     "packages/*",
 ]
 

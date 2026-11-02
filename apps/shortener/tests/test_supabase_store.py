@@ -6,12 +6,14 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-
 from shortener.config import Settings
 from shortener.db import HttpResponse, SupabaseStore
 from shortener.errors import StoreError
 
-MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
+# Migrations live with the rest of the Supabase SQL (applied by the db unit), not in this app.
+REPO_ROOT = Path(__file__).resolve().parents[3]
+MIGRATIONS = REPO_ROOT / "db" / "supabase" / "migrations"
+SHORTENER_MIGRATIONS = sorted(MIGRATIONS.glob("*shortener*.sql"))
 
 
 class FakeTransport:
@@ -82,7 +84,9 @@ def test_network_failures_become_store_errors():
         async def request(self, *a, **k):
             raise OSError("unreachable")
 
-    store = SupabaseStore(Settings(supabase_url="https://p.supabase.co", supabase_service_key="k"), Down())
+    store = SupabaseStore(
+        Settings(supabase_url="https://p.supabase.co", supabase_service_key="k"), Down()
+    )
     with pytest.raises(StoreError):
         asyncio.run(store.get_link("abc123"))
 
@@ -90,12 +94,12 @@ def test_network_failures_become_store_errors():
 def test_schema_has_no_visitor_identifying_columns():
     forbidden = re.compile(r"\b(ip|ip_address|user_agent|ua|cookie|visitor_id|fingerprint)\b", re.I)
     tables = ""
-    for path in sorted(MIGRATIONS.glob("*.sql")):
+    for path in SHORTENER_MIGRATIONS:
         tables += "\n".join(re.findall(r"CREATE TABLE.*?\n\);", path.read_text(), re.S | re.I))
     assert "click_daily" in tables  # the scan actually saw the tables
     assert not forbidden.search(tables)
 
 
 def test_migrations_are_timestamped_and_ordered():
-    names = [p.name for p in sorted(MIGRATIONS.glob("*.sql"))]
+    names = [p.name for p in SHORTENER_MIGRATIONS]
     assert names and all(re.match(r"^\d{14}_[a-z0-9_]+\.sql$", n) for n in names)

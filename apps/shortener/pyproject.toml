@@ -5,13 +5,14 @@ description = "URL shortener with privacy-conscious aggregate analytics (FastAPI
 requires-python = ">=3.12"
 dependencies = [
     "fastapi",
+    "pydantic",
 ]
 
 [project.optional-dependencies]
 # Kept as an extra (not only a dependency group) so Pants' python_requirements can read it.
 test = [
-    "pytest",
-    "httpx",
+    "pytest>=7,<8",  # match the pytest line Pants 2.24 is built around
+    "httpx2",  # required by starlette.testclient (imported lazily, so Pants cannot infer it)
 ]
 
 [dependency-groups]
