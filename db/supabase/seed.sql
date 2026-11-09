@@ -4161,7 +4161,8 @@ INSERT INTO "public"."site_metrics" ("id", "total_boops", "max_boop_combo", "tot
 --
 
 INSERT INTO "public"."worker_health_stats" ("id", "total_requests", "total_proxy_requests", "total_metrics_requests", "total_health_requests", "total_errors_4xx", "total_errors_5xx", "total_supabase_write_failures", "total_posthog_proxy_failures", "total_decode_failures", "total_decode_successes", "sum_metrics_latency_ms", "count_metrics_latency", "sum_proxy_latency_ms", "count_proxy_latency", "sum_persist_latency_ms", "count_persist_latency", "updated_at") VALUES
-	(true, 2686, 1594, 80, 2, 1022, 0, 0, 0, 9, 364, 20720, 80, 257284, 1221, 51492, 364, '2026-11-03 18:54:20.798876+00');
+	(true, 2686, 1594, 80, 2, 1022, 0, 0, 0, 9, 364, 20720, 80, 257284, 1221, 51492, 364, '2026-11-03 18:54:20.798876+00')
+	ON CONFLICT (id) DO NOTHING;;
 
 
 --
