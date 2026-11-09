@@ -223,7 +223,7 @@ Redirects, `GET /{slug}`, stay public. The web routes must not shadow reserved p
 
 ## Open questions
 
-- Repository: a separate repo, or a folder in the existing `jbirdkerr.github.io` repo? The existing repo's AGENTS.md applies to that repo, so a separate repo may be cleaner.
+- Repository: a separate repo, or a folder in the existing `jbirdkerr-net` repo? The existing repo's AGENTS.md applies to that repo, so a separate repo may be cleaner.
 - Supabase: confirm the free-tier limits and whether the shortener should share the existing project or use its own. Also confirm Supabase Auth's limits and the current JWT verification and session refresh approach.
 - Phase 1 owner migration: migrate existing links to real user IDs in Phase 2, or leave them with the original key owner?
 - Duplicate targets: reuse the existing slug or create a new one?

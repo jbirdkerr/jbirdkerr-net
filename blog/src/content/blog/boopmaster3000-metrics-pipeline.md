@@ -34,4 +34,4 @@ None of this was the plan at the start. I wanted to make a placeholder photo do 
 
 And that's how a goofy boop app acquired an analytics pipeline: JavaScript in the browser, a Cloudflare Worker at the edge, PostHog for event analytics, and Supabase/Postgres for the live numbers. It is a whole lot of machinery for counting snoot boops—and a pretty good tour of what you can build by following the next question.
 
-Check out the [docs](https://github.com/jbirdkerr/jbirdkerr.github.io/tree/main/apps/metrics-worker/docs) for a more detailed look!
+Check out the [docs](https://github.com/jbirdkerr/jbirdkerr-net/tree/main/apps/metrics-worker/docs) for a more detailed look!

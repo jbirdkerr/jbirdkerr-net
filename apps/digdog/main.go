@@ -14,7 +14,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
-	"github.com/jbirdkerr/jbirdkerr.github.io/apps/digdog/internal/board"
+	"github.com/jbirdkerr/jbirdkerr-net/apps/digdog/internal/board"
 )
 
 const (

@@ -56,4 +56,4 @@ The game works. You can play a full round, win, lose moves to mismatches, and re
 - **Keyboard navigation** is fully implemented (arrow keys move a focus cursor, Space or Enter digs), which matters to me because this site tries to be accessible to everyone, not just people with a mouse.
 - **Stats.** I have the `metrics-worker` just sitting there looking pretty. I'm sure I could add trackable stats to the game once we have auth implemented across the site.
 
-The code lives at [`apps/digdog/`](https://github.com/jbirdkerr/jbirdkerr.github.io/tree/main/apps/digdog) in the same monorepo as the blog and the snoot booper. Hank the Poodle Dog's empire continues to expand!
+The code lives at [`apps/digdog/`](https://github.com/jbirdkerr/jbirdkerr-net/tree/main/apps/digdog) in the same monorepo as the blog and the snoot booper. Hank the Poodle Dog's empire continues to expand!

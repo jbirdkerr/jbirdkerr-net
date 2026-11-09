@@ -8,7 +8,6 @@ DigDog is a pixel-art card-matching game: a dog digs up cards and matches pairs.
 - `cards.go`: Board rules (Pick, Reveal, Update) and placeholder drawing.
 - `assets/dog.png`: sprite sheet, 128x160, 32x32 frames. Rows: idle 4, dig 4, sniff 3, happy 3, sad 2.
 - `web/`: HTML page. The built `digdog.wasm` and `wasm_exec.js` are generated; never commit them.
-- `tasks/`: one small task per session. `tasks/ESCALATE.md` lists work not meant for you.
 
 ## Commands
 

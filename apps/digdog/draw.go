@@ -6,7 +6,7 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/jbirdkerr/jbirdkerr.github.io/apps/digdog/internal/board"
+	"github.com/jbirdkerr/jbirdkerr-net/apps/digdog/internal/board"
 )
 
 const (

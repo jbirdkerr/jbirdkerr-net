@@ -17,7 +17,7 @@ Build a dog-themed card-matching game that compiles to WebAssembly and is embedd
 
 ## 2. Context about the owner and the site
 
-- Site: `jbirdkerr.net`, a static **Astro** blog/portfolio (Tailwind, dark terminal/retro look, JetBrains Mono, blue/cyan glow). This game lives in the same **monorepo** as the site (`github.com/jbirdkerr/jbirdkerr.github.io`), in `apps/digdog/`, and is served from its own subdomain.
+- Site: `jbirdkerr.net`, a static **Astro** blog/portfolio (Tailwind, dark terminal/retro look, JetBrains Mono, blue/cyan glow). This game lives in the same **monorepo** as the site (`github.com/jbirdkerr/jbirdkerr-net`), in `apps/digdog/`, and is served from its own subdomain.
 - The monorepo's Pages site publishes `jbirdkerr.net` via GitHub Actions. An existing experiment (a dog photo with eye tracking and snoot booping, "Henry's snoot booper") lives at `henry.jbirdkerr.net`. Its stack is vanilla JS and WebAudio, with a Cloudflare Worker for analytics.
 - Hosting philosophy: **as free as possible** (GitHub Pages, Cloudflare free tier). The owner cares about accessibility and affordability of technology, so the game should be cheap to host and cheap to understand. Pragmatism over cleverness; don't add complexity to justify a technology.
 - The owner's site conventions (from the repo's `AGENTS.md`) that apply here too. Note that `AGENTS.md` may still describe the older single-page site layout; follow its conventions, not its file layout:
@@ -35,7 +35,7 @@ Build a dog-themed card-matching game that compiles to WebAssembly and is embedd
 | Decision | Choice |
 | --- | --- |
 | Name | **DigDog** |
-| Location | Monorepo `github.com/jbirdkerr/jbirdkerr.github.io`, directory `apps/digdog/`, with its own `go.mod` |
+| Location | Monorepo `github.com/jbirdkerr/jbirdkerr-net`, directory `apps/digdog/`, with its own `go.mod` |
 | Language / engine | **Go with Ebiten v2** (`github.com/hajimehoshi/ebiten/v2`) |
 | Target | WebAssembly (`GOOS=js GOARCH=wasm`), also runnable natively for development |
 | Game concept | Card-match; a dog "digs up" two cards per turn |
@@ -55,7 +55,7 @@ Two files exist: `main.go` and `cards.go`. They belong in the same `package main
 The owner has already created `apps/digdog/go.mod`:
 
 ```
-module github.com/jbirdkerr/jbirdkerr.github.io/digdog
+module github.com/jbirdkerr/jbirdkerr-net/digdog
 
 go 1.26.8
 
@@ -65,7 +65,7 @@ require github.com/hajimehoshi/ebiten/v2 v2.10.5
 (plus indirect dependencies). Two things to know:
 
 - Ebiten **v2.10.5 is newer than the version the code was written against**. If an API call fails to compile or is deprecated, check the Ebiten docs for that version and adapt.
-- The module path ends in `/digdog`, but the directory is `apps/digdog`. The convention is for the path to match the directory, so change it once, early, with `go mod edit -module github.com/jbirdkerr/jbirdkerr.github.io/apps/digdog`. Nothing imports the module, so this is safe. Ask the owner first if they would rather keep the current path.
+- The module path ends in `/digdog`, but the directory is `apps/digdog`. The convention is for the path to match the directory, so change it once, early, with `go mod edit -module github.com/jbirdkerr/jbirdkerr-net/apps/digdog`. Nothing imports the module, so this is safe. Ask the owner first if they would rather keep the current path.
 
 ### Required asset that does not exist yet
 
@@ -228,7 +228,7 @@ The main site lists experiments through a content collection at `src/content/pro
 title: DigDog
 description: A pixel-art card-matching game where a dog digs up the cards. Go, Ebiten, WebAssembly.
 url: https://digdog.jbirdkerr.net
-repo: https://github.com/jbirdkerr/jbirdkerr.github.io/tree/main/apps/digdog
+repo: https://github.com/jbirdkerr/jbirdkerr-net/tree/main/apps/digdog
 stack: [Go, Ebiten, WebAssembly]
 order: 2
 ---

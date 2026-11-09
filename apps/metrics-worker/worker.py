@@ -45,7 +45,6 @@ ALLOWED_ORIGINS = {
     "https://jbirdkerr.net",
     "https://www.jbirdkerr.net",
     "https://boopmaster3000.jbirdkerr.net",
-    "https://jbirdkerr.github.io",
 }
 
 POSTHOG_API_HOST = "https://us.i.posthog.com"

@@ -58,7 +58,7 @@ Liveness probe returning current UTC timestamp.
 Dynamic CORS preflight handler.
 
 - **Behavior**:
-  - Validates `Origin` against `ALLOWED_ORIGINS` (`https://jbirdkerr.net`, `https://www.jbirdkerr.net`, `https://henry.jbirdkerr.net`, `https://jbirdkerr.github.io`).
+  - Validates `Origin` against `ALLOWED_ORIGINS` (`https://jbirdkerr.net`, `https://www.jbirdkerr.net`, `https://henry.jbirdkerr.net`).
   - Echoes back `Access-Control-Request-Headers` dynamically to avoid preflight header mismatches with PostHog SDK.
 
 ---

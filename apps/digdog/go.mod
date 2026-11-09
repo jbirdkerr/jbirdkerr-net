@@ -1,4 +1,4 @@
-module github.com/jbirdkerr/jbirdkerr.github.io/apps/digdog
+module github.com/jbirdkerr/jbirdkerr-net/apps/digdog
 
 go 1.26.8
 
