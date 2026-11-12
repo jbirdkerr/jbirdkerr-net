@@ -625,7 +625,9 @@ Verify that it cannot access another application's schema.
 
 Verify that secrets do not appear in plaintext in exported state.
 
-### Phase 5: Multiple applications
+### Phase 5: Multiple applications (Implemented; live verification deferred)
+
+Status: discovery loop, collision checks, and mock-based isolation tests are in place. Verifying against the live database with a real second app is deferred until another application is onboarded.
 
 Extend discovery to provision every configured application.
 
@@ -633,7 +635,9 @@ Verify that adding a new app configuration creates only that application's resou
 
 Verify that changes to one application's permissions do not modify other applications' grants.
 
-### Phase 6: metrics-worker migration
+### Phase 6: metrics-worker migration (Planned)
+
+See [PLAN_PHASE_6_7.md](PLAN_PHASE_6_7.md).
 
 Move metrics-worker from `public` to its dedicated schema.
 
@@ -641,7 +645,9 @@ Update its application configuration and connection settings.
 
 Verify its normal functionality after migration.
 
-### Phase 7: Documentation
+### Phase 7: Documentation (Planned)
+
+See [PLAN_PHASE_6_7.md](PLAN_PHASE_6_7.md).
 
 Document:
 
