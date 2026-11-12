@@ -1,6 +1,7 @@
 import base64
 import gzip
 import json
+import types
 import unittest
 
 from worker import (
@@ -13,6 +14,7 @@ from worker import (
     number,
     render_health_metrics_html,
     render_metrics_html,
+    supabase_headers,
 )
 
 
@@ -178,6 +180,20 @@ class TestMetricsWorker(unittest.TestCase):
         self.assertIn("50 ms", html)  # 5000 / 100 avg proxy
         self.assertIn("100.0%", html)  # decode success rate
         self.assertIn("Pipeline Health", html)
+
+    def test_supabase_headers_read_uses_accept_profile(self):
+        env = types.SimpleNamespace(SUPABASE_SERVICE_ROLE_KEY="key")
+        headers = supabase_headers(env)
+        self.assertEqual(headers["Accept-Profile"], "metrics_worker")
+        self.assertNotIn("Content-Profile", headers)
+        self.assertEqual(headers["Authorization"], "Bearer key")
+
+    def test_supabase_headers_write_uses_content_profile(self):
+        env = types.SimpleNamespace(SUPABASE_SERVICE_ROLE_KEY="key")
+        headers = supabase_headers(env, write=True)
+        self.assertEqual(headers["Content-Profile"], "metrics_worker")
+        self.assertEqual(headers["Content-Type"], "application/json")
+        self.assertNotIn("Accept-Profile", headers)
 
 
 if __name__ == "__main__":
