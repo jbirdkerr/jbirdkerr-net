@@ -70,7 +70,7 @@ Keep the reverse SQL in the plan and rehearse it too: `ALTER TABLE ... SET SCHEM
 
 Checks actually run: pre-commit (including the worker tests) passes. On a **scratch Postgres 16 with stand-in `anon`/`authenticated`/`service_role` roles** (not Supabase, and not Postgres 17; the `MAINTAIN` privilege was stripped from the setup copy only), the rehearsal reported OK for all structural checks, both RPCs worked as `service_role` and incremented the counters, `anon` could read, and the transaction rolled back. A real apply followed by `rollback.sql` restored all objects to `public` with the function ACLs intact.
 
-Not verified: behavior on the real Supabase instance (PostgREST schema exposure, Realtime, existing production grants), and `supabase db reset` with the changed seed (no Docker here).
+Local verification (2026-11-12, reported by the project owner): `supabase start` initially failed on an existing local database because `config.toml` exposes a schema that did not exist yet; after temporarily removing `metrics_worker` from `[api] schemas`, running `supabase db reset`, and restoring it, the local stack runs on the new schema with the changed seed. Not verified: behavior on the real Supabase instance (PostgREST schema exposure, Realtime, existing production grants).
 
 ### Steps for the live run
 
