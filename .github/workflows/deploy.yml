@@ -137,6 +137,12 @@ jobs:
 
       # -------------------------------------------------------------
       # 1. Database Migrations (Supabase) - Runs first
+      #
+      # Normally a no-op: all migrations live in db/supabase/migrations and are applied by the
+      # Supabase GitHub integration when changes reach main, so SUPABASE_ACCESS_TOKEN is not set
+      # and this step prints a skip message. The integration runs independently of this workflow,
+      # so migration-before-deploy ordering is not guaranteed. The `db` unit still matters:
+      # metrics-worker depends_on it in deploy/units.toml, so migration changes redeploy the worker.
       # -------------------------------------------------------------
       - name: Apply Supabase migrations
         if: steps.detect.outputs.db == 'true'
@@ -148,7 +154,7 @@ jobs:
           if [ -n "$SUPABASE_ACCESS_TOKEN" ]; then
             npx supabase db push
           else
-            echo "SUPABASE_ACCESS_TOKEN not set; skipping live migration push."
+            echo "SUPABASE_ACCESS_TOKEN not set; skipping CI migration push (migrations are applied by the Supabase GitHub integration)."
           fi
 
       # -------------------------------------------------------------
