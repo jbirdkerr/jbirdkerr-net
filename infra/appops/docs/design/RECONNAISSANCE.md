@@ -328,7 +328,7 @@ Secrets Store bindings are **not available locally** during `wrangler dev`. For 
 - [x] New migration `20261111180000_move-metrics-worker-schema.sql` moves the tables, sequence and functions and rewrites the `SECURITY DEFINER` function bodies and `search_path`.
 - [x] Worker sends `Accept-Profile` / `Content-Profile`; schema exposed on the hosted project; `seed.sql` and `config.toml` updated.
 - [x] Rehearsed in a rolled-back transaction against the live database; applied through the Supabase GitHub integration when PR #6 merged; old `public` objects gone; worker reads and writes confirmed by the project owner.
-- [ ] Re-grant `app_metrics_worker_dev` on the moved tables (`refresh` then `up` run by the project owner; result not yet confirmed here).
+- [x] Re-grant `app_metrics_worker_dev` on the moved tables: `./run.sh refresh` then `up`, confirmed with `has_table_privilege(..., 'SELECT')` returning true (2026-11-12).
 - Details and rollback SQL: [PLAN_PHASE_6_7.md](PLAN_PHASE_6_7.md).
 
 ### Milestone 6 — Documentation (Written; restore test outstanding)

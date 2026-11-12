@@ -76,7 +76,7 @@ If tables are moved into an app's schema (as with metrics-worker), re-apply the 
 select has_table_privilege('app_<app>_dev', '<schema>.<table>', 'SELECT') as can_select;
 ```
 
-Status: configuring permissions **Verified** (catalog and probe-table checks on the live database). The refresh-and-up re-grant after a move is **untested**; if `refresh` does not show the missing grant, run the `GRANT`s once as the admin user instead.
+Status: configuring permissions **Verified** (catalog and probe-table checks on the live database). The refresh-and-up re-grant after a move is **verified once**: after the metrics-worker move, `./run.sh refresh` then `up` restored the role's access (`has_table_privilege` returned true, 2026-11-12). If `refresh` does not show a missing grant in another case, run the `GRANT`s once as the admin user instead.
 
 ## 4. Previewing and deploying
 
@@ -176,5 +176,5 @@ Status: **Untested** against the live database. Rehearse with a throwaway app fi
 - Only the `dev` environment has been exercised.
 - Cross-app permissions, automatic rotation, migration execution and automatic credential injection are out of scope.
 - The metrics-worker does not use its AppOps credential; it stays on the REST API.
-- The `app_..._dev` role needs its grants re-applied after tables are moved into its schema (§3).
+- The `app_..._dev` role needs its grants re-applied (`refresh` then `up`) after tables are moved into its schema (§3).
 - Phase 5 (live second app), app removal, schema change and state restore have not been exercised against real infrastructure.
