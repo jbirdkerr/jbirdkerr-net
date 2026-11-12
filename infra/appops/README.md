@@ -33,7 +33,7 @@ permissions:
     - SELECT
 
 credentials:
-  rotate: false
+  version: 1   # bump to rotate the password
 ```
 
 Applications without `appops.yaml` are ignored.

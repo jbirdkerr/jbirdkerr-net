@@ -3,6 +3,9 @@ module github.com/jbirdkerr/jbirdkerr-net/infra/appops
 go 1.26.6
 
 require (
+	github.com/pulumi/pulumi-cloudflare/sdk/v6 v6.23.3
+	github.com/pulumi/pulumi-postgresql/sdk/v3 v3.18.3
+	github.com/pulumi/pulumi-random/sdk/v4 v4.16.8
 	github.com/pulumi/pulumi/sdk/v3 v3.274.1
 	gopkg.in/yaml.v3 v3.0.1
 )

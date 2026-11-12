@@ -1,8 +1,5 @@
 name: appops
-runtime:
-  name: go
-  options:
-    binary: cmd/appops
+runtime: go
 description: Automated PostgreSQL application role and schema provisioning with Cloudflare Secrets Store integration
 backend:
   url: postgres://

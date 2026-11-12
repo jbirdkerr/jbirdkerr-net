@@ -15,4 +15,4 @@ permissions:
     - SELECT
 
 credentials:
-  rotate: false
+  version: 2

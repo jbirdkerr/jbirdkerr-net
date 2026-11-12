@@ -21,7 +21,7 @@ permissions:
     - USAGE
     - SELECT
 credentials:
-  rotate: false
+  version: 1
 `
 	cfg, err := ParseAppConfig([]byte(yamlData), "apps/metrics-worker/appops.yaml")
 	if err != nil {
@@ -43,8 +43,8 @@ credentials:
 	if len(cfg.Permissions.Sequences) != 2 {
 		t.Errorf("expected 2 sequence permissions, got %d", len(cfg.Permissions.Sequences))
 	}
-	if cfg.Credentials.Rotate {
-		t.Errorf("expected rotate to be false")
+	if cfg.Credentials.Version != 1 {
+		t.Errorf("expected credentials version 1")
 	}
 
 	roleName, err := cfg.RoleName("dev")
@@ -132,5 +132,24 @@ name: ` + strings.Repeat("a", 65) + `
 				t.Errorf("expected error containing %q, got %v", tc.errSubstr, err)
 			}
 		})
+	}
+}
+
+func TestParseAppConfig_CredentialsVersion(t *testing.T) {
+	cfg, err := ParseAppConfig([]byte("name: app\n"), "appops.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Credentials.Version != 1 {
+		t.Errorf("expected default version 1, got %d", cfg.Credentials.Version)
+	}
+
+	cfg, err = ParseAppConfig([]byte("name: app\ncredentials:\n  version: 3\n"), "appops.yaml")
+	if err != nil || cfg.Credentials.Version != 3 {
+		t.Errorf("expected version 3, got %v (err %v)", cfg, err)
+	}
+
+	if _, err := ParseAppConfig([]byte("name: app\ncredentials:\n  version: -1\n"), "appops.yaml"); err == nil {
+		t.Error("expected error for negative version")
 	}
 }

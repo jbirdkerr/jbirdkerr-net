@@ -32,7 +32,9 @@ type DatabaseConfig struct {
 
 // CredentialsConfig specifies credential handling and rotation settings
 type CredentialsConfig struct {
-	Rotate bool `yaml:"rotate"`
+	// Version is the explicit rotation token. Defaults to 1. Increment it to
+	// generate a new password and push it to PostgreSQL and Cloudflare.
+	Version int `yaml:"version"`
 }
 
 // AppConfig represents an individual application's appops.yaml
@@ -95,6 +97,13 @@ func (c *AppConfig) Validate() error {
 	// Database name default fallback to "postgres" if omitted
 	if strings.TrimSpace(c.Database.Name) == "" {
 		c.Database.Name = "postgres"
+	}
+
+	if c.Credentials.Version == 0 {
+		c.Credentials.Version = 1
+	}
+	if c.Credentials.Version < 0 {
+		return fmt.Errorf("field 'credentials.version' must be a positive integer")
 	}
 
 	// Validate Schema identifier

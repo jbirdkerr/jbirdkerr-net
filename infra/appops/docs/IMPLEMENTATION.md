@@ -189,7 +189,7 @@ permissions:
     - SELECT
 
 credentials:
-  rotate: false
+  version: 1
 ```
 
 Example: `apps/metrics-worker/appops.yaml`
@@ -212,7 +212,7 @@ permissions:
     - SELECT
 
 credentials:
-  rotate: false
+  version: 1
 ```
 
 ### Configuration requirements
@@ -455,7 +455,7 @@ The initial configuration can use:
 
 ```yaml
 credentials:
-  rotate: false
+  version: 1
 ```
 
 Do not generate a new password on every Pulumi deployment.
@@ -587,13 +587,13 @@ Inspect the monorepo and report:
 
 Propose the implementation file layout and identify blockers. Report generated at `infra/appops/docs/RECONNAISSANCE.md`.
 
-### Phase 2: Bootstrap and Pulumi project (In Progress)
+### Phase 2: Bootstrap and Pulumi project (Completed)
 
 Document and validate the independent PostgreSQL state backend.
 
 - [x] State backend setup documented in `infra/appops/docs/STATE_BACKEND_BOOTSTRAP.md`.
 - [x] Pulumi Go project created and configured for DIY PostgreSQL state backend (`infra/appops/Pulumi.yaml`, `go.mod`).
-- [ ] User provisions dedicated PostgreSQL state server and runs `pulumi login postgres://`.
+- [x] User provisions dedicated PostgreSQL state server and runs `pulumi login postgres://`.
 
 ### Phase 3: Discovery and configuration (Completed)
 
@@ -606,7 +606,9 @@ Implement:
 - [x] Schema and permission defaults.
 - [x] Add unit tests for discovery and validation (`internal/config/config_test.go`, `internal/discovery/discovery_test.go`).
 
-### Phase 4: Provision one application
+### Phase 4: Provision one application (In Progress)
+
+Status: PostgreSQL side implemented and previewing (RECONNAISSANCE.md Milestone 2). Cloudflare storage not started (Milestone 3). Apply and verification deferred until both are done.
 
 Implement one complete vertical slice for a single application:
 

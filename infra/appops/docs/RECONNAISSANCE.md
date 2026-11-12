@@ -265,20 +265,40 @@ Secrets Store bindings are **not available locally** during `wrangler dev`. For 
 
 **Verification status:** `go test -v ./...`, `go vet ./...`, and repository pre-commit checks pass cleanly.
 
-### Milestone 2 — PostgreSQL provisioning for one application
+### Milestone 2 — PostgreSQL provisioning for one application (Applied and verified)
 
 **Goal:** `pulumi up` creates a schema, role, and grants in a test PostgreSQL database.
 
-- Add PostgreSQL provider configuration.
-- Implement schema creation.
-- Implement role creation with `RandomPassword` and write-only password.
-- Implement grants (CONNECT, USAGE, table/sequence privileges).
-- Implement default privileges for the migration identity.
-- Verify with a local PostgreSQL instance.
+**Status:** Code is in `internal/postgres/postgres.go` and `main.go`. Applied together with Milestone 3 in one `pulumi up`; the schema and role exist in the live database.
+
+- [x] Add PostgreSQL provider configuration (`TARGET_PG*` env vars).
+- [x] Implement schema creation.
+- [x] Implement role creation with `RandomPassword` (`SkipDropRole` set).
+- [x] Use the write-only `passwordWo` / `passwordWoVersion` fields (provider upgraded to `pulumi-postgresql` v3.18.3; version comes from `credentials.version`).
+- [x] Implement grants (CONNECT, USAGE, table/sequence privileges).
+- [x] Implement default privileges for the migration owner (`postgres`).
+- [x] Verify catalog state on the live database (2026-11-11): role can log in with no superuser/createrole/createdb/bypassrls; schema owned by `postgres`; role has CONNECT, schema USAGE (no CREATE); default privileges from `postgres` are `arwd` on tables and `rU` on sequences.
+- [x] Verify behavior by connecting as the role: own-schema access and cross-schema isolation confirmed (2026-11-11).
+
+**Known follow-ups:** add tests for `internal/postgres`; finish the connection-based verification.
 
 **Testable independently:** Connect as the provisioned role; verify access to its own schema and denial of others.
 
-### Milestone 3 — Cloudflare Secrets Store integration
+### Milestone 3 — Cloudflare Secrets Store integration (Completed)
+
+> [!WARNING]
+> `pulumi-cloudflare` was upgraded to v6.23.3 (v6.2.0 had no `SecretsStoreSecret`). In that version `Value` is a secret-wrapped input, **not** write-only, so the connection URI is stored (encrypted) in Pulumi state. Confirm with `pulumi stack export` after the first apply.
+
+**Status:** `internal/secrets/secrets.go` builds the percent-encoded URI and creates the secret after the role and grants. Required settings: the store ID (`CLOUDFLARE_SECRETS_STORE_ID` in `.env`, or `appops:secretsStoreId` in stack config; the store is created manually), plus `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (or `appops:cloudflareAccountId`). Optional: `appops:appDbHost`, `appDbPort`, `appDbUserSuffix` (e.g. `.<project-ref>` for the Supabase pooler). Rotation: bump `credentials.version` in `appops.yaml`.
+
+- [x] Add Cloudflare provider configuration and secret creation.
+- [x] Set the store ID and complete the first `pulumi up` (needed the API token to have Account → Secrets Store → Edit).
+- [x] Secret `APP_METRICS_WORKER_DEV_DATABASE_URL` exists in Secrets Store.
+- [x] `pulumi stack export` checked with and without `--show-secrets`; secret values are encrypted in state (2026-11-11).
+- [x] Idempotency: preview with unchanged `credentials.version` shows no changes (2026-11-11).
+- [x] Rotation: bumping `credentials.version` to 2 and running `pulumi up` replaced the password, updated the role, and updated the Cloudflare secret; verified end to end (2026-11-11).
+
+**Rotation recovery:** Postgres is updated before Cloudflare. If the Cloudflare step fails, the role already has the new password and the secret is stale. Fix the cause (token permission, network) and re-run `pulumi up`; it only needs to push the secret. Do not decrement `credentials.version` to "undo" a rotation; that generates yet another password.
 
 **Goal:** The generated connection URI is stored in Cloudflare Secrets Store.
 
