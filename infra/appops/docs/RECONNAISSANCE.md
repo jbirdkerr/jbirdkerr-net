@@ -321,17 +321,21 @@ Secrets Store bindings are **not available locally** during `wrangler dev`. For 
 - [x] `deploy/units.toml` has a detection-only `appops` unit (no CI deploy step; AppOps is applied manually).
 - [ ] Verify against the live database with a real second app (none exists yet; url-shortener is spec-only), and exercise the removal procedure.
 
-### Milestone 5 — metrics-worker schema migration (separate)
+### Milestone 5 — metrics-worker schema migration (Completed 2026-11-12)
 
 **Goal:** Move metrics-worker tables from `public` to `metrics_worker`.
 
-- This is a database migration, not an AppOps code change — it would be a new file in `db/supabase/migrations/`.
-- Requires updating the `SECURITY DEFINER` functions.
-- Requires a coordinated deployment: migration, then application config update.
+- [x] New migration `20261111180000_move-metrics-worker-schema.sql` moves the tables, sequence and functions and rewrites the `SECURITY DEFINER` function bodies and `search_path`.
+- [x] Worker sends `Accept-Profile` / `Content-Profile`; schema exposed on the hosted project; `seed.sql` and `config.toml` updated.
+- [x] Rehearsed in a rolled-back transaction against the live database; applied through the Supabase GitHub integration when PR #6 merged; old `public` objects gone; worker reads and writes confirmed by the project owner.
+- [ ] Re-grant `app_metrics_worker_dev` on the moved tables (`refresh` then `up` run by the project owner; result not yet confirmed here).
+- Details and rollback SQL: [PLAN_PHASE_6_7.md](PLAN_PHASE_6_7.md).
 
-### Milestone 6 — Documentation
+### Milestone 6 — Documentation (Written; restore test outstanding)
 
-- Onboarding guide, credential retrieval, rotation, recovery, state backup.
+- [x] Operations guide: [OPERATIONS.md](OPERATIONS.md) (setup, adding an app, permissions, deploy, credentials, rotation, schema change, recovery, removal, limitations).
+- [ ] State backup restore test (documented, never run).
+- [ ] Untested procedures marked in the guide: app removal, schema change, interrupted-deploy recovery, Secrets Store binding.
 
 ---
 

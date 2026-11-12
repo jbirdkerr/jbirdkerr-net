@@ -36,7 +36,29 @@ credentials:
   version: 1   # bump to rotate the password
 ```
 
-Applications without `appops.yaml` are ignored.
+Applications without `appops.yaml` are ignored. `credentials.version` is the explicit rotation token (default 1). Reserved schemas (`public`, `pg_*`, `information_schema`, Supabase-managed schemas) are rejected, and two apps whose names sanitize to the same identifier (for example `my-app` and `my_app`) conflict.
+
+## Quick Start
+
+```bash
+cd infra/appops
+cp .env.example .env     # fill in; see docs/OPERATIONS.md section 1
+./run.sh login
+./run.sh stack select dev
+./run.sh preview         # plan only
+./run.sh up              # apply
+```
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [docs/OPERATIONS.md](./docs/OPERATIONS.md) | Setup, adding an app, permissions, preview/deploy, retrieving and rotating credentials, schema changes, failure recovery, state backup/restore, removal, known limitations. Each procedure is marked verified or untested. |
+| [docs/STATE_BACKEND_BOOTSTRAP.md](./docs/STATE_BACKEND_BOOTSTRAP.md) | Provisioning the separate PostgreSQL state backend |
+| [docs/IMPLEMENTATION.md](./docs/IMPLEMENTATION.md) | Architecture specification and phase status |
+| [docs/RECONNAISSANCE.md](./docs/RECONNAISSANCE.md) | Repository findings and milestone status |
+| [docs/PLAN_PHASE_6_7.md](./docs/PLAN_PHASE_6_7.md) | The metrics-worker schema move and its rehearsal/rollback SQL |
+
 
 ## State Backend
 
@@ -62,6 +84,8 @@ infra/appops/
 │   └── secrets/                 # Cloudflare Secrets Store publishing
 └── docs/
     ├── IMPLEMENTATION.md        # Architecture specification
+    ├── OPERATIONS.md            # Runbook: setup, rotation, recovery, removal
+    ├── PLAN_PHASE_6_7.md        # metrics-worker schema move (with phase6/ SQL)
     ├── PREWORK.md               # Reconnaissance checklist
     ├── RECONNAISSANCE.md        # Reconnaissance report and milestone status
     └── STATE_BACKEND_BOOTSTRAP.md # PostgreSQL DIY state backend guide
@@ -75,30 +99,3 @@ Run unit tests locally:
 cd infra/appops
 go test -v ./...
 ```
-
-## Rotating an Application's Credential
-
-Increment `credentials.version` in the app's `appops.yaml`, then run `./run.sh preview` and `./run.sh up`.
-This regenerates the password, updates the PostgreSQL role (`passwordWo`), and updates the Cloudflare secret.
-PostgreSQL is updated first; if the Cloudflare step fails, fix the cause and re-run `up`. Do not decrement the
-version to undo a rotation.
-
-## Removing an Application
-
-Deleting an `appops.yaml` (or a typo that makes discovery skip it) must not drop a live role or schema, so the
-schema and role are created with `Protect`. Behavior:
-
-- `./run.sh preview` fails with a protected-resource error for that app. No resources are deleted.
-- To remove the app deliberately, first confirm nothing uses its role or schema, then unprotect that app's schema and
-  role (`./run.sh state unprotect '<urn>'`; list URNs with `./run.sh stack --show-urns`), then run `up`.
-- The role is created with `SkipDropRole`, so Pulumi stops tracking it but PostgreSQL keeps it; drop it manually.
-  A non-empty schema is not dropped automatically.
-- The Cloudflare secret is not protected and is deleted with the app. Remove any worker bindings that use it first.
-
-This procedure has not been exercised against a live database yet.
-
-## Reserved Schemas
-
-`database.schema` may not be `public`, `pg_*`, `information_schema`, or a Supabase-managed schema
-(`auth`, `storage`, `realtime`, `extensions`, `vault`, ...). Two apps whose names sanitize to the same identifier
-(for example `my-app` and `my_app`) are rejected as a conflict.

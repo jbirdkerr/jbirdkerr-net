@@ -21,9 +21,9 @@ flowchart TD
 
     subgraph Storage["⚡ Supabase (PostgreSQL)"]
         RPC["RPC: record_site_events()"]
-        T_Metrics[("public.site_metrics\n(Singleton totals & combos)")]
-        T_Counts[("public.site_event_counts\n(Top event breakdown)")]
-        T_Events[("public.site_events\n(Raw audit log)")]
+        T_Metrics[("metrics_worker.site_metrics\n(Singleton totals & combos)")]
+        T_Counts[("metrics_worker.site_event_counts\n(Top event breakdown)")]
+        T_Events[("metrics_worker.site_events\n(Raw audit log)")]
     end
 
     subgraph PostHog["📊 PostHog Cloud"]
@@ -81,6 +81,7 @@ flowchart TD
 - **Top Breakdown (`site_event_counts`)**: Upsert-tracked counters per event type for fast breakdown rendering.
 - **Audit Log (`site_events`)**: Append-only log of raw interaction payloads.
 - **Atomic Stored Procedure (`record_site_events`)**: Executes batch processing within a single database transaction to guarantee consistency and minimize connection round-trips.
+- **Dedicated schema (`metrics_worker`)**: The tables and RPCs live in their own schema, provisioned by AppOps (`infra/appops`). The worker selects it with PostgREST `Accept-Profile` / `Content-Profile` headers, and the schema must be an exposed API schema. The worker still authenticates with the Supabase service-role key; it does not use the AppOps database credential.
 
 ### 4. Analytics Tier (PostHog Cloud)
 - Ingests raw session event data for long-term analytics, user session exploration, and retention analysis without bogging down operational transactional databases.
