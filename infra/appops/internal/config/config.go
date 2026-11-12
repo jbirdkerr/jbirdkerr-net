@@ -18,6 +18,21 @@ var (
 	identifierRegex = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
 )
 
+// reservedSchemas are schemas AppOps must never manage: PostgreSQL built-ins and
+// Supabase-managed schemas. Matching is case-insensitive; "pg_" prefixes are also reserved.
+var reservedSchemas = map[string]bool{
+	"public": true, "information_schema": true,
+	"auth": true, "storage": true, "extensions": true, "realtime": true, "vault": true,
+	"graphql": true, "graphql_public": true, "pgsodium": true, "pgsodium_masks": true,
+	"net": true, "cron": true, "pgbouncer": true, "supabase_functions": true,
+	"supabase_migrations": true, "_realtime": true, "_analytics": true, "topology": true,
+}
+
+func isReservedSchema(name string) bool {
+	n := strings.ToLower(name)
+	return reservedSchemas[n] || strings.HasPrefix(n, "pg_")
+}
+
 // PermissionsConfig specifies database object privileges
 type PermissionsConfig struct {
 	Tables    []string `yaml:"tables"`
@@ -109,6 +124,10 @@ func (c *AppConfig) Validate() error {
 	// Validate Schema identifier
 	if err := validateIdentifier(c.Database.Schema, "database.schema"); err != nil {
 		return err
+	}
+
+	if isReservedSchema(c.Database.Schema) {
+		return fmt.Errorf("field 'database.schema' value '%s' is reserved (PostgreSQL or Supabase managed) and cannot be managed by AppOps", c.Database.Schema)
 	}
 
 	// Validate Database name identifier

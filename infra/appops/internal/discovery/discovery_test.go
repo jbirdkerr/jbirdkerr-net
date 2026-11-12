@@ -84,3 +84,37 @@ database:
 		t.Fatal("expected conflict error for duplicate app names, got nil")
 	}
 }
+
+func TestDiscoverApps_SanitizedIdentityCollision(t *testing.T) {
+	tempDir := t.TempDir()
+	for dir, yaml := range map[string]string{
+		"a": "name: my-app\ndatabase:\n  schema: schema_one\n",
+		"b": "name: my_app\ndatabase:\n  schema: schema_two\n",
+	} {
+		os.Mkdir(filepath.Join(tempDir, dir), 0755)
+		os.WriteFile(filepath.Join(tempDir, dir, AppOpsConfigFileName), []byte(yaml), 0644)
+	}
+
+	if _, err := DiscoverApps(tempDir); err == nil {
+		t.Fatal("expected error: 'my-app' and 'my_app' map to the same role identity")
+	}
+}
+
+func TestDiscoverApps_MultipleAppsIndependent(t *testing.T) {
+	tempDir := t.TempDir()
+	for dir, yaml := range map[string]string{
+		"blog":  "name: blog\n",
+		"stats": "name: stats\ndatabase:\n  schema: stats_data\n",
+	} {
+		os.Mkdir(filepath.Join(tempDir, dir), 0755)
+		os.WriteFile(filepath.Join(tempDir, dir, AppOpsConfigFileName), []byte(yaml), 0644)
+	}
+
+	apps, err := DiscoverApps(tempDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(apps) != 2 || apps[0].Database.Schema != "blog" || apps[1].Database.Schema != "stats_data" {
+		t.Errorf("unexpected discovery result: %+v", apps)
+	}
+}

@@ -309,13 +309,17 @@ Secrets Store bindings are **not available locally** during `wrangler dev`. For 
 
 **Testable independently:** Verify the secret exists in Cloudflare; verify `pulumi up` with no changes produces no diff.
 
-### Milestone 4 — Multi-application support and protection
+### Milestone 4 — Multi-application support and protection (Implemented, not applied)
 
 **Goal:** Adding a second `appops.yaml` provisions only that application's resources.
 
-- Extend the main loop to handle multiple discovered apps.
-- Add deletion safeguards (retain on delete, or require explicit confirmation).
-- Test isolation between applications.
+- [x] The main loop provisions every discovered app.
+- [x] Mock-based tests (`internal/postgres/postgres_test.go`) show adding an app leaves the existing app's resources and inputs unchanged, and that changing one app's permissions changes only that app's grants.
+- [x] Discovery rejects name, schema, and sanitized-identity collisions (`my-app` vs `my_app`).
+- [x] Reserved schemas (`public`, `pg_*`, Supabase-managed) are rejected in config validation.
+- [x] Schema and role are `Protect`ed; the role also uses `SkipDropRole`. Removal procedure documented in `README.md`.
+- [x] `deploy/units.toml` has a detection-only `appops` unit (no CI deploy step; AppOps is applied manually).
+- [ ] Verify against the live database with a real second app (none exists yet; url-shortener is spec-only), and exercise the removal procedure.
 
 ### Milestone 5 — metrics-worker schema migration (separate)
 

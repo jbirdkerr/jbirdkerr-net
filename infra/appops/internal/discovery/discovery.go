@@ -24,6 +24,7 @@ func DiscoverApps(appsDir string) ([]*config.AppConfig, error) {
 	var configs []*config.AppConfig
 	seenNames := make(map[string]string)
 	seenSchemas := make(map[string]string)
+	seenIdentities := make(map[string]string)
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -62,6 +63,14 @@ func DiscoverApps(appsDir string) ([]*config.AppConfig, error) {
 			return nil, fmt.Errorf("conflicting application name '%s' found in %s and %s", cfg.Name, existing, configFile)
 		}
 		seenNames[cfg.Name] = configFile
+
+		// Different names can sanitize to the same role and secret identity
+		// (e.g. "my-app" and "my_app"), which would collide in PostgreSQL and Cloudflare.
+		identity := config.SanitizeIdentifier(cfg.Name)
+		if existing, exists := seenIdentities[identity]; exists {
+			return nil, fmt.Errorf("application names in %s and %s both map to role/secret identity '%s'", existing, configFile, identity)
+		}
+		seenIdentities[identity] = configFile
 
 		// Prevent duplicate schema assignments across applications
 		if existing, exists := seenSchemas[cfg.Database.Schema]; exists {

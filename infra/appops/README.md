@@ -51,21 +51,19 @@ infra/appops/
 ├── Pulumi.yaml                  # Pulumi project configuration
 ├── Pulumi.dev.yaml              # Stack configuration (dev)
 ├── go.mod / go.sum              # Go dependencies
+├── main.go                      # Pulumi entrypoint
+├── run.sh                       # Loads .env and runs pulumi
+├── .env.example                 # Required environment variables (copy to .env)
 ├── README.md                    # Project overview
-├── cmd/
-│   └── appops/
-│       └── main.go              # CLI & Pulumi entrypoint
 ├── internal/
-│   ├── config/
-│   │   ├── config.go            # appops.yaml parsing & identifier validation
-│   │   └── config_test.go       # Schema and permission unit tests
-│   └── discovery/
-│       ├── discovery.go         # App discovery & conflict resolution
-│       └── discovery_test.go    # Discovery filter & conflict tests
+│   ├── config/                  # appops.yaml parsing & validation
+│   ├── discovery/               # App discovery & conflict detection
+│   ├── postgres/                # Schema, role, grants, default privileges
+│   └── secrets/                 # Cloudflare Secrets Store publishing
 └── docs/
     ├── IMPLEMENTATION.md        # Architecture specification
     ├── PREWORK.md               # Reconnaissance checklist
-    ├── RECONNAISSANCE.md        # Initial reconnaissance report
+    ├── RECONNAISSANCE.md        # Reconnaissance report and milestone status
     └── STATE_BACKEND_BOOTSTRAP.md # PostgreSQL DIY state backend guide
 ```
 
@@ -77,3 +75,30 @@ Run unit tests locally:
 cd infra/appops
 go test -v ./...
 ```
+
+## Rotating an Application's Credential
+
+Increment `credentials.version` in the app's `appops.yaml`, then run `./run.sh preview` and `./run.sh up`.
+This regenerates the password, updates the PostgreSQL role (`passwordWo`), and updates the Cloudflare secret.
+PostgreSQL is updated first; if the Cloudflare step fails, fix the cause and re-run `up`. Do not decrement the
+version to undo a rotation.
+
+## Removing an Application
+
+Deleting an `appops.yaml` (or a typo that makes discovery skip it) must not drop a live role or schema, so the
+schema and role are created with `Protect`. Behavior:
+
+- `./run.sh preview` fails with a protected-resource error for that app. No resources are deleted.
+- To remove the app deliberately, first confirm nothing uses its role or schema, then unprotect that app's schema and
+  role (`./run.sh state unprotect '<urn>'`; list URNs with `./run.sh stack --show-urns`), then run `up`.
+- The role is created with `SkipDropRole`, so Pulumi stops tracking it but PostgreSQL keeps it; drop it manually.
+  A non-empty schema is not dropped automatically.
+- The Cloudflare secret is not protected and is deleted with the app. Remove any worker bindings that use it first.
+
+This procedure has not been exercised against a live database yet.
+
+## Reserved Schemas
+
+`database.schema` may not be `public`, `pg_*`, `information_schema`, or a Supabase-managed schema
+(`auth`, `storage`, `realtime`, `extensions`, `vault`, ...). Two apps whose names sanitize to the same identifier
+(for example `my-app` and `my_app`) are rejected as a conflict.

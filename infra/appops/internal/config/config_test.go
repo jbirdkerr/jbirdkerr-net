@@ -153,3 +153,17 @@ func TestParseAppConfig_CredentialsVersion(t *testing.T) {
 		t.Error("expected error for negative version")
 	}
 }
+
+func TestParseAppConfig_ReservedSchemas(t *testing.T) {
+	for _, schema := range []string{"public", "PUBLIC", "auth", "storage", "pg_catalog", "information_schema"} {
+		yamlData := "name: app\ndatabase:\n  schema: " + schema + "\n"
+		if _, err := ParseAppConfig([]byte(yamlData), "appops.yaml"); err == nil {
+			t.Errorf("expected error for reserved schema %q", schema)
+		}
+	}
+
+	// A sanitized default that lands on a reserved name must also be rejected.
+	if _, err := ParseAppConfig([]byte("name: public\n"), "appops.yaml"); err == nil {
+		t.Error("expected error when default schema derived from name is reserved")
+	}
+}

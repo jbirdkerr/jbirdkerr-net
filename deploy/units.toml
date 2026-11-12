@@ -47,6 +47,15 @@ deploy = "apps/metrics-worker:deploy"
 depends_on = ["db"]
 environments = ["preview", "production"]
 
+# Detection only: AppOps is applied manually with infra/appops/run.sh (it needs state-backend
+# and database credentials), so there is intentionally no build or deploy step for this unit.
+[units.appops]
+name = "appops"
+paths = ["infra/appops/**", "apps/*/appops.yaml"]
+host = "pulumi"
+depends_on = []
+environments = ["production"]
+
 # [units.url-shortener]
 # name = "url-shortener"
 # paths = ["apps/url-shortener/**"]
