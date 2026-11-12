@@ -100,7 +100,7 @@ func main() {
 			return fmt.Errorf("failed to initialize target PostgreSQL provider: %w", err)
 		}
 
-		// Cloudflare Secrets Store target (store is created once, manually; see RECONNAISSANCE.md 3a)
+		// Cloudflare Secrets Store target (store is created once, manually; see docs/design/RECONNAISSANCE.md 3a)
 		accountID := cfg.Get("cloudflareAccountId")
 		if accountID == "" {
 			accountID = os.Getenv("CLOUDFLARE_ACCOUNT_ID")

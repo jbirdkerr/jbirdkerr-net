@@ -1,6 +1,6 @@
 # AppOps — Initial Repository Reconnaissance
 
-Read `infra/appops/IMPLEMENTATION.md` in full.
+Read `infra/appops/docs/design/IMPLEMENTATION.md` in full.
 
 I want to begin implementing AppOps, a Go/Pulumi project that provisions isolated PostgreSQL application roles and schemas and publishes application connection strings to Cloudflare Secrets Store.
 

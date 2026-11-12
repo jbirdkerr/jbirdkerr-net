@@ -585,7 +585,7 @@ Inspect the monorepo and report:
 - [x] Existing Cloudflare setup.
 - [x] Existing Pulumi or Go conventions.
 
-Propose the implementation file layout and identify blockers. Report generated at `infra/appops/docs/RECONNAISSANCE.md`.
+Propose the implementation file layout and identify blockers. Report generated at `infra/appops/docs/design/RECONNAISSANCE.md`.
 
 ### Phase 2: Bootstrap and Pulumi project (Completed)
 

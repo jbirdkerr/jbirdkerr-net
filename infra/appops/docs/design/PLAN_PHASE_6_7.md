@@ -1,6 +1,6 @@
 # AppOps — Plan for Phase 6 (metrics-worker schema move) and Phase 7 (documentation)
 
-Status: **Phase 6 completed 2026-11-12** (PR #6 merged; tables and functions moved, worker serving from `metrics_worker`, old `public` objects gone, confirmed by the project owner). **Phase 7 documentation is in [OPERATIONS.md](./OPERATIONS.md).**
+Status: **Phase 6 completed 2026-11-12** (PR #6 merged; tables and functions moved, worker serving from `metrics_worker`, old `public` objects gone, confirmed by the project owner). **Phase 7 documentation is in [OPERATIONS.md](../OPERATIONS.md).**
 
 Correction to the plan below: the migration was applied by the Supabase GitHub integration when the PR merged, not by the CI `db` step (which skipped because `SUPABASE_ACCESS_TOKEN` is not set). The CI worker deploy and the integration are independent, so migration-before-deploy ordering is not guaranteed. Earlier text in this document that says CI applies the migration describes the original assumption.
 

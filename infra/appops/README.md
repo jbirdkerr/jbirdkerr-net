@@ -55,9 +55,9 @@ cp .env.example .env     # fill in; see docs/OPERATIONS.md section 1
 |---|---|
 | [docs/OPERATIONS.md](./docs/OPERATIONS.md) | Setup, adding an app, permissions, preview/deploy, retrieving and rotating credentials, schema changes, failure recovery, state backup/restore, removal, known limitations. Each procedure is marked verified or untested. |
 | [docs/STATE_BACKEND_BOOTSTRAP.md](./docs/STATE_BACKEND_BOOTSTRAP.md) | Provisioning the separate PostgreSQL state backend |
-| [docs/IMPLEMENTATION.md](./docs/IMPLEMENTATION.md) | Architecture specification and phase status |
-| [docs/RECONNAISSANCE.md](./docs/RECONNAISSANCE.md) | Repository findings and milestone status |
-| [docs/PLAN_PHASE_6_7.md](./docs/PLAN_PHASE_6_7.md) | The metrics-worker schema move and its rehearsal/rollback SQL |
+| [docs/design/IMPLEMENTATION.md](./docs/design/IMPLEMENTATION.md) | Architecture specification and phase status |
+| [docs/design/RECONNAISSANCE.md](./docs/design/RECONNAISSANCE.md) | Repository findings and milestone status |
+| [docs/design/PLAN_PHASE_6_7.md](./docs/design/PLAN_PHASE_6_7.md) | The metrics-worker schema move and its rehearsal/rollback SQL |
 
 
 ## State Backend
@@ -83,12 +83,14 @@ infra/appops/
 │   ├── postgres/                # Schema, role, grants, default privileges
 │   └── secrets/                 # Cloudflare Secrets Store publishing
 └── docs/
-    ├── IMPLEMENTATION.md        # Architecture specification
     ├── OPERATIONS.md            # Runbook: setup, rotation, recovery, removal
-    ├── PLAN_PHASE_6_7.md        # metrics-worker schema move (with phase6/ SQL)
-    ├── PREWORK.md               # Reconnaissance checklist
-    ├── RECONNAISSANCE.md        # Reconnaissance report and milestone status
-    └── STATE_BACKEND_BOOTSTRAP.md # PostgreSQL DIY state backend guide
+    ├── STATE_BACKEND_BOOTSTRAP.md # PostgreSQL DIY state backend guide
+    ├── phase6/                  # Rehearsal and rollback SQL for the metrics-worker schema move
+    └── design/                  # Documents used to build the feature
+        ├── IMPLEMENTATION.md    # Architecture specification and phase status
+        ├── PREWORK.md           # Reconnaissance checklist
+        ├── RECONNAISSANCE.md    # Reconnaissance report and milestone status
+        └── PLAN_PHASE_6_7.md    # metrics-worker schema move plan
 ```
 
 ## Running Tests

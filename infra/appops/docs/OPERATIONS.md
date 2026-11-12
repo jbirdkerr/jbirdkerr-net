@@ -1,6 +1,6 @@
 # AppOps Operations Guide
 
-How to set up, run and maintain AppOps. For what AppOps is, see the [README](../README.md); for the design, see [IMPLEMENTATION.md](./IMPLEMENTATION.md).
+How to set up, run and maintain AppOps. For what AppOps is, see the [README](../README.md); for the design, see [IMPLEMENTATION.md](./design/IMPLEMENTATION.md).
 
 Each procedure is marked **Verified** (exercised against the live database), **Partly verified**, or **Untested** (written from the design and provider behavior, never run). Treat untested procedures as a starting point and rehearse them before relying on them.
 
@@ -57,7 +57,7 @@ Status: **Verified** (this is how the dev stack was set up).
 
    Expect login true, no superuser/create-role/create-db/bypass-RLS, CONNECT and USAGE true, CREATE false. Also confirm `APP_<APP>_DEV_DATABASE_URL` exists in the Secrets Store.
 5. **Migrations.** AppOps creates the schema and role; it does not create tables. Add a normal timestamped migration in `db/supabase/migrations/` that uses `CREATE SCHEMA IF NOT EXISTS <schema>` and qualifies every object with the schema. On this repository, merging to `main` applies migrations through the **Supabase GitHub integration**. The `SUPABASE_ACCESS_TOKEN not set; skipping` line in the CI log means the workflow's own `supabase db push` step skipped; the integration applied the migration anyway (confirmed for the metrics-worker migration with `supabase migration list --remote`). The integration and the CI deploy are independent, so do not assume the migration lands before a dependent worker deploy.
-6. **Apps that talk to Supabase over the REST API (PostgREST)** also need: the schema exposed on the hosted project (Data API → Exposed schemas, or `alter role authenticator set pgrst.db_schemas = '...'` plus `notify pgrst, 'reload config'`), the schema added to `[api] schemas` in `db/supabase/config.toml`, and `Accept-Profile` / `Content-Profile` headers in the app. Developers with an existing local database must follow the one-time local reset in the Phase 6 section of [PLAN_PHASE_6_7.md](./PLAN_PHASE_6_7.md). Apps that connect directly with their AppOps credential need none of this.
+6. **Apps that talk to Supabase over the REST API (PostgREST)** also need: the schema exposed on the hosted project (Data API → Exposed schemas, or `alter role authenticator set pgrst.db_schemas = '...'` plus `notify pgrst, 'reload config'`), the schema added to `[api] schemas` in `db/supabase/config.toml`, and `Accept-Profile` / `Content-Profile` headers in the app. Developers with an existing local database must follow the one-time local reset in the Phase 6 section of [PLAN_PHASE_6_7.md](./design/PLAN_PHASE_6_7.md). Apps that connect directly with their AppOps credential need none of this.
 
 Status: **Verified** for metrics-worker. **Untested** with a second application (Phase 5 live verification is deferred; mock-based tests cover resource isolation).
 
@@ -131,7 +131,7 @@ Changing `database.schema` replaces the schema resource. Because schemas are `Pr
 4. `up`, then re-run the checks in §2 for the new schema.
 5. Update schema exposure and the app's profile headers if it uses PostgREST.
 
-Status: **Untested** as a procedure. The only schema move so far created the schema through AppOps first and moved tables in; see [PLAN_PHASE_6_7.md](./PLAN_PHASE_6_7.md) for how that went.
+Status: **Untested** as a procedure. The only schema move so far created the schema through AppOps first and moved tables in; see [PLAN_PHASE_6_7.md](./design/PLAN_PHASE_6_7.md) for how that went.
 
 ## 8. Recovering from partial failures
 

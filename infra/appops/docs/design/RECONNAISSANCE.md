@@ -219,7 +219,7 @@ Secrets Store bindings are **not available locally** during `wrangler dev`. For 
 
 ### Must resolve before Phase 2 (Bootstrap)
 
-1. **State backend PostgreSQL server** — The user will provision a dedicated PostgreSQL state server before implementation. See the companion [State Backend Bootstrap Guide](STATE_BACKEND_BOOTSTRAP.md) for what needs to be set up.
+1. **State backend PostgreSQL server** — The user will provision a dedicated PostgreSQL state server before implementation. See the companion [State Backend Bootstrap Guide](../STATE_BACKEND_BOOTSTRAP.md) for what needs to be set up.
 
 2. ~~**Cloudflare Secrets Store access**~~ — **Resolved.** Secrets Store is supported, the Pulumi provider has native resources, and Python Workers can consume secrets via async `.get()` bindings. See § 3a above.
 
@@ -333,7 +333,7 @@ Secrets Store bindings are **not available locally** during `wrangler dev`. For 
 
 ### Milestone 6 — Documentation (Written; restore test outstanding)
 
-- [x] Operations guide: [OPERATIONS.md](OPERATIONS.md) (setup, adding an app, permissions, deploy, credentials, rotation, schema change, recovery, removal, limitations).
+- [x] Operations guide: [OPERATIONS.md](../OPERATIONS.md) (setup, adding an app, permissions, deploy, credentials, rotation, schema change, recovery, removal, limitations).
 - [ ] State backup restore test (documented, never run).
 - [ ] Untested procedures marked in the guide: app removal, schema change, interrupted-deploy recovery, Secrets Store binding.
 
@@ -356,7 +356,7 @@ Secrets Store bindings are **not available locally** during `wrangler dev`. For 
 | `infra/appops/internal/discovery/discovery_test.go` | Unit tests for discovery logic |
 | `infra/appops/README.md` | Project documentation and directory structure |
 | `infra/appops/docs/STATE_BACKEND_BOOTSTRAP.md` | State backend bootstrap runbook |
-| `infra/appops/docs/RECONNAISSANCE.md` | Repository reconnaissance report |
+| `infra/appops/docs/design/RECONNAISSANCE.md` | Repository reconnaissance report |
 | `apps/metrics-worker/appops.yaml` | Opt-in application configuration for metrics-worker |
 
 ### Files not modified
