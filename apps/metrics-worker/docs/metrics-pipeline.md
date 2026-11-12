@@ -28,7 +28,7 @@ sequenceDiagram
     and Persist to Supabase (Background)
         Worker->>Worker: Decode & normalize payload (JSON/Gzip/Base64)
         Worker->>Supabase: POST /rest/v1/rpc/record_site_events
-        Note over Supabase: Atomic transaction updates:<br/>1. public.site_events (insert log)<br/>2. public.site_event_counts (upsert count)<br/>3. public.site_metrics (increment totals & combos)
+        Note over Supabase: Atomic transaction updates:<br/>1. metrics_worker.site_events (insert log)<br/>2. metrics_worker.site_event_counts (upsert count)<br/>3. metrics_worker.site_metrics (increment totals & combos)
         Supabase-->>Worker: 200 OK (Updated metrics JSON)
     end
 
@@ -44,9 +44,9 @@ sequenceDiagram
    - Concurrently, inside an async background task (`ctx.waitUntil`), the worker decodes the payload, extracts custom metrics (e.g. boops, eye roll distance in px, treat counts), and dispatches them to Supabase.
 4. **Atomic Transaction in Supabase**:
    - `record_site_events(p_events)` runs as a single PostgreSQL transaction.
-   - Inserts raw events into `public.site_events`.
-   - Upserts aggregated totals into `public.site_event_counts`.
-   - Updates global counters in `public.site_metrics`.
+   - Inserts raw events into `metrics_worker.site_events`.
+   - Upserts aggregated totals into `metrics_worker.site_event_counts`.
+   - Updates global counters in `metrics_worker.site_metrics`.
 
 ---
 

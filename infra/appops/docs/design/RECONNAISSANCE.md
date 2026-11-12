@@ -219,7 +219,7 @@ Secrets Store bindings are **not available locally** during `wrangler dev`. For 
 
 ### Must resolve before Phase 2 (Bootstrap)
 
-1. **State backend PostgreSQL server** — The user will provision a dedicated PostgreSQL state server before implementation. See the companion [State Backend Bootstrap Guide](STATE_BACKEND_BOOTSTRAP.md) for what needs to be set up.
+1. **State backend PostgreSQL server** — The user will provision a dedicated PostgreSQL state server before implementation. See the companion [State Backend Bootstrap Guide](../STATE_BACKEND_BOOTSTRAP.md) for what needs to be set up.
 
 2. ~~**Cloudflare Secrets Store access**~~ — **Resolved.** Secrets Store is supported, the Pulumi provider has native resources, and Python Workers can consume secrets via async `.get()` bindings. See § 3a above.
 
@@ -321,17 +321,21 @@ Secrets Store bindings are **not available locally** during `wrangler dev`. For 
 - [x] `deploy/units.toml` has a detection-only `appops` unit (no CI deploy step; AppOps is applied manually).
 - [ ] Verify against the live database with a real second app (none exists yet; url-shortener is spec-only), and exercise the removal procedure.
 
-### Milestone 5 — metrics-worker schema migration (separate)
+### Milestone 5 — metrics-worker schema migration (Completed 2026-11-12)
 
 **Goal:** Move metrics-worker tables from `public` to `metrics_worker`.
 
-- This is a database migration, not an AppOps code change — it would be a new file in `db/supabase/migrations/`.
-- Requires updating the `SECURITY DEFINER` functions.
-- Requires a coordinated deployment: migration, then application config update.
+- [x] New migration `20261111180000_move-metrics-worker-schema.sql` moves the tables, sequence and functions and rewrites the `SECURITY DEFINER` function bodies and `search_path`.
+- [x] Worker sends `Accept-Profile` / `Content-Profile`; schema exposed on the hosted project; `seed.sql` and `config.toml` updated.
+- [x] Rehearsed in a rolled-back transaction against the live database; applied through the Supabase GitHub integration when PR #6 merged; old `public` objects gone; worker reads and writes confirmed by the project owner.
+- [x] Re-grant `app_metrics_worker_dev` on the moved tables: `./run.sh refresh` then `up`, confirmed with `has_table_privilege(..., 'SELECT')` returning true (2026-11-12).
+- Details and rollback SQL: [PLAN_PHASE_6_7.md](PLAN_PHASE_6_7.md).
 
-### Milestone 6 — Documentation
+### Milestone 6 — Documentation (Written; restore test outstanding)
 
-- Onboarding guide, credential retrieval, rotation, recovery, state backup.
+- [x] Operations guide: [OPERATIONS.md](../OPERATIONS.md) (setup, adding an app, permissions, deploy, credentials, rotation, schema change, recovery, removal, limitations).
+- [ ] State backup restore test (documented, never run).
+- [ ] Untested procedures marked in the guide: app removal, schema change, interrupted-deploy recovery, Secrets Store binding.
 
 ---
 
@@ -352,7 +356,7 @@ Secrets Store bindings are **not available locally** during `wrangler dev`. For 
 | `infra/appops/internal/discovery/discovery_test.go` | Unit tests for discovery logic |
 | `infra/appops/README.md` | Project documentation and directory structure |
 | `infra/appops/docs/STATE_BACKEND_BOOTSTRAP.md` | State backend bootstrap runbook |
-| `infra/appops/docs/RECONNAISSANCE.md` | Repository reconnaissance report |
+| `infra/appops/docs/design/RECONNAISSANCE.md` | Repository reconnaissance report |
 | `apps/metrics-worker/appops.yaml` | Opt-in application configuration for metrics-worker |
 
 ### Files not modified

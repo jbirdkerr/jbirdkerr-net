@@ -1,6 +1,10 @@
 # AppOps — Plan for Phase 6 (metrics-worker schema move) and Phase 7 (documentation)
 
-Status: **Phase 6 files are written and tested on a scratch database; nothing has been applied to the live database, and nothing is merged to `main`.** Decisions taken: accept the short cutover window (option A), and rehearse in a rolled-back transaction before any real apply.
+Status: **Phase 6 completed 2026-11-12** (PR #6 merged; tables and functions moved, worker serving from `metrics_worker`, old `public` objects gone, confirmed by the project owner). **Phase 7 documentation is in [OPERATIONS.md](../OPERATIONS.md).**
+
+Correction to the plan below: the migration was applied by the Supabase GitHub integration when the PR merged, not by the CI `db` step (which skipped because `SUPABASE_ACCESS_TOKEN` is not set). The CI worker deploy and the integration are independent, so migration-before-deploy ordering is not guaranteed. Earlier text in this document that says CI applies the migration describes the original assumption.
+
+Original status line: Decisions taken: accept the short cutover window (option A), and rehearse in a rolled-back transaction before any real apply.
 Phase 5 (multiple apps) stays in `IMPLEMENTATION.md`; its mock-based tests pass, and live verification with a real second app is deferred.
 
 ## Phase 6 — Move metrics-worker from `public` to `metrics_worker`

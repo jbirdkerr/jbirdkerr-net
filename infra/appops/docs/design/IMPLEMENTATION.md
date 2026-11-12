@@ -585,7 +585,7 @@ Inspect the monorepo and report:
 - [x] Existing Cloudflare setup.
 - [x] Existing Pulumi or Go conventions.
 
-Propose the implementation file layout and identify blockers. Report generated at `infra/appops/docs/RECONNAISSANCE.md`.
+Propose the implementation file layout and identify blockers. Report generated at `infra/appops/docs/design/RECONNAISSANCE.md`.
 
 ### Phase 2: Bootstrap and Pulumi project (Completed)
 
@@ -635,7 +635,7 @@ Verify that adding a new app configuration creates only that application's resou
 
 Verify that changes to one application's permissions do not modify other applications' grants.
 
-### Phase 6: metrics-worker migration (Planned)
+### Phase 6: metrics-worker migration (Completed 2026-11-12)
 
 See [PLAN_PHASE_6_7.md](PLAN_PHASE_6_7.md).
 
@@ -645,7 +645,7 @@ Update its application configuration and connection settings.
 
 Verify its normal functionality after migration.
 
-### Phase 7: Documentation (Planned)
+### Phase 7: Documentation (Written; restore test outstanding)
 
 See [PLAN_PHASE_6_7.md](PLAN_PHASE_6_7.md).
 
