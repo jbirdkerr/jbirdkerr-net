@@ -1,6 +1,6 @@
 # AppOps — Plan for Phase 6 (metrics-worker schema move) and Phase 7 (documentation)
 
-Status: **plan only. No migration has been written or applied, and the worker is unchanged.**
+Status: **Phase 6 files are written and tested on a scratch database; nothing has been applied to the live database, and nothing is merged to `main`.** Decisions taken: accept the short cutover window (option A), and rehearse in a rolled-back transaction before any real apply.
 Phase 5 (multiple apps) stays in `IMPLEMENTATION.md`; its mock-based tests pass, and live verification with a real second app is deferred.
 
 ## Phase 6 — Move metrics-worker from `public` to `metrics_worker`
@@ -61,11 +61,29 @@ Keep the reverse SQL in the plan and rehearse it too: `ALTER TABLE ... SET SCHEM
 
 `app_metrics_worker_dev` has no privileges on the moved tables (default privileges only cover tables created later). The worker does not use this role yet (it stays on the REST API with `service_role`), so this does not block the cutover, but the isolation demo needs it. Options: `./run.sh refresh` then `up` (the provider should see the grant drift; **untested**), or a one-off `GRANT` run as admin. Test the Pulumi route first; fall back to SQL.
 
+### Implemented (uncommitted to `main`; on the feature branch only)
+
+- `db/supabase/migrations/20261111180000_move-metrics-worker-schema.sql` (function bodies copied from the original migrations with `public` replaced).
+- `apps/metrics-worker/worker.py`: `DB_SCHEMA` constant and `supabase_headers()` (`Accept-Profile` / `Content-Profile`), with two new unit tests.
+- `db/supabase/seed.sql` (5 references) and `db/supabase/config.toml` (`[api] schemas`).
+- `infra/appops/docs/phase6/rehearsal.sql` and `rollback.sql`.
+
+Checks actually run: pre-commit (including the worker tests) passes. On a **scratch Postgres 16 with stand-in `anon`/`authenticated`/`service_role` roles** (not Supabase, and not Postgres 17; the `MAINTAIN` privilege was stripped from the setup copy only), the rehearsal reported OK for all structural checks, both RPCs worked as `service_role` and incremented the counters, `anon` could read, and the transaction rolled back. A real apply followed by `rollback.sql` restored all objects to `public` with the function ACLs intact.
+
+Not verified: behavior on the real Supabase instance (PostgREST schema exposure, Realtime, existing production grants), and `supabase db reset` with the changed seed (no Docker here).
+
+### Steps for the live run
+
+1. Rehearse (changes nothing): `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f infra/appops/docs/phase6/rehearsal.sql` from the repository root. Every NOTICE should say OK, and both comparison columns should be `t`.
+2. Back up the four tables before the real cutover.
+3. Expose `metrics_worker` on the hosted project (dashboard: Settings → API → Exposed schemas, or `supabase config push`). Do this **before** merging, or the new worker gets errors from PostgREST.
+4. Merge to `main`: the `db` unit applies the migration, then the worker deploys. Expect a few minutes of failed writes and stats errors.
+5. Verify the worker (`/metrics`, health stats, event persistence). If it fails, run `phase6/rollback.sql` and redeploy the previous worker.
+6. Restore app-role privileges on the moved tables (see "AppOps follow-up").
+
 ### Open decisions
 
-1. Cutover option A or B.
-2. Whether to apply the migration to production now or only demonstrate the rolled-back rehearsal.
-3. Whether the worker should be switched to the AppOps credential. It stays on REST in this plan (decision recorded in `RECONNAISSANCE.md`).
+1. The worker stays on the REST API with `service_role`; switching it to the AppOps credential is deferred.
 
 ## Phase 7 — Documentation
 

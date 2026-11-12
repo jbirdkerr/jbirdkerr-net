@@ -16,6 +16,10 @@ import time
 from datetime import UTC, datetime
 from urllib.parse import parse_qs, unquote, urlparse
 
+# PostgREST schema holding the metrics tables and RPCs. It must be an exposed API schema, and the
+# profile headers below tell PostgREST to use it instead of the default `public` schema.
+DB_SCHEMA = "metrics_worker"
+
 try:
     from pyodide.ffi import create_proxy
     from workers import Response, WorkerEntrypoint, fetch
@@ -353,11 +357,7 @@ async def persist_posthog_payload(payload_bytes, env, query_string=None):
         response = await fetch(
             f"{env.SUPABASE_URL}/rest/v1/rpc/record_site_events",
             method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "apikey": env.SUPABASE_SERVICE_ROLE_KEY,
-                "Authorization": f"Bearer {env.SUPABASE_SERVICE_ROLE_KEY}",
-            },
+            headers=supabase_headers(env, write=True),
             body=json.dumps({"p_events": events}),
         )
 
@@ -505,14 +505,29 @@ async def handle_health_metrics(env, cors_headers):
         )
 
 
+def supabase_headers(env, write=False):
+    """Headers for PostgREST calls to the metrics schema.
+
+    PostgREST selects a non-default schema with Accept-Profile (GET/HEAD) or
+    Content-Profile (POST, PATCH, DELETE, and RPC calls).
+    """
+    headers = {
+        "apikey": env.SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {env.SUPABASE_SERVICE_ROLE_KEY}",
+    }
+    if write:
+        headers["Content-Type"] = "application/json"
+        headers["Content-Profile"] = DB_SCHEMA
+    else:
+        headers["Accept-Profile"] = DB_SCHEMA
+    return headers
+
+
 async def supabase_request(env, path, method="GET"):
     return await fetch(
         f"{env.SUPABASE_URL}{path}",
         method=method,
-        headers={
-            "apikey": env.SUPABASE_SERVICE_ROLE_KEY,
-            "Authorization": f"Bearer {env.SUPABASE_SERVICE_ROLE_KEY}",
-        },
+        headers=supabase_headers(env),
     )
 
 
@@ -550,11 +565,7 @@ async def record_worker_health(
         await fetch(
             f"{env.SUPABASE_URL}/rest/v1/rpc/record_worker_health",
             method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "apikey": env.SUPABASE_SERVICE_ROLE_KEY,
-                "Authorization": f"Bearer {env.SUPABASE_SERVICE_ROLE_KEY}",
-            },
+            headers=supabase_headers(env, write=True),
             body=json.dumps(body),
         )
     except Exception as error:
