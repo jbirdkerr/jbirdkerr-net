@@ -76,7 +76,7 @@ Not verified: behavior on the real Supabase instance (PostgREST schema exposure,
 
 1. Rehearse (changes nothing): `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f infra/appops/docs/phase6/rehearsal.sql` from the repository root. Every NOTICE should say OK, and both comparison columns should be `t`.
 2. Back up the four tables before the real cutover.
-3. Expose `metrics_worker` on the hosted project (dashboard: Settings → API → Exposed schemas, or `supabase config push`). Do this **before** merging, or the new worker gets errors from PostgREST.
+3. Expose `metrics_worker` on the hosted project. The dashboard setting is named **Data API → Exposed schemas** (the exact menu location has moved before); SQL alternative: `alter role authenticator set pgrst.db_schemas = '...'` plus `notify pgrst, 'reload config'`. Check with a `curl` to `/rest/v1/` using `Accept-Profile: metrics_worker` (200 = exposed, 406 = not). Do this **before** merging, or the new worker gets errors from PostgREST. **Done 2026-11-11 (reported by the project owner; not independently verified).**
 4. Merge to `main`: the `db` unit applies the migration, then the worker deploys. Expect a few minutes of failed writes and stats errors.
 5. Verify the worker (`/metrics`, health stats, event persistence). If it fails, run `phase6/rollback.sql` and redeploy the previous worker.
 6. Restore app-role privileges on the moved tables (see "AppOps follow-up").
