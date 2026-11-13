@@ -135,7 +135,7 @@ New and changed code, in dependency order. Use the standard library for JWK pars
    - On PostgreSQL 17, `GRANT <app role> TO authenticator` needs the grantor to hold `ADMIN` on the app role. The role that created it has that implicitly, so this works when AppOps connects as the same role that created the app roles (`postgres` today). Phase 0 confirms it.
 4. `internal/secrets/secrets.go`
    - Add `PublishAPIToken(ctx, app, env, token pulumi.StringOutput, store, deps...)` mirroring `PublishDatabaseURL`: resource name `<app>-<env>-api-token`, secret name from `APITokenSecretName`, scope `workers`, comment `Managed by AppOps`.
-   - Wrap the value in `pulumi.ToSecret(...)`. The existing database URL is secret only because the password output is. The token is computed from non-secret time outputs and a key held in a Go variable, so without the wrap it is not secret. The Cloudflare SDK lists `value` in `AdditionalSecretOutputs`, but do not rely on that for state inputs or preview diffs.
+   - Wrap the value in `pulumi.ToSecret(...)`. The token is computed from non-secret time outputs and a key held in a Go variable, so its own Output is not secret. Checked during Phase 4: `pulumi-cloudflare` v6.23.3's `NewSecretsStoreSecret` already wraps `Value` with `pulumi.ToSecret` and lists `value` in `AdditionalSecretOutputs`, so the explicit wrap is a safeguard against a future SDK change, not the only protection. A mock test asserts the value sent is secret.
 5. `main.go`
    - Read and parse the signing JWK once, only if any app has `api.enabled`. If it comes from Pulumi secret config, keep it as a secret `Output` and mint inside an `Apply` over it.
    - Add a time resource for a stable `iat`: `github.com/pulumiverse/pulumi-time` `time.Static` with triggers `{credentials_version, api_version}`. **Verify the module path, resource API and license (believed MPL-2.0, which is AGPL-compatible) before adding it to `go.mod`.** The reason: calling `time.Now()` inside the program would change the token every run. Compute `exp = iat + expires_in_days`.
@@ -185,7 +185,7 @@ Kill switch for one app: set `api.enabled: false` (removes the membership and th
 | PostgREST or Supabase may reject `iss` or require `aud` | Requests rejected | Test in Phase 0 and adjust the claims in `apijwt` |
 | RPCs revoke `EXECUTE` from `PUBLIC` (known for metrics-worker and shortener) | RPCs fail with a permission error | `permissions.functions` in this plan |
 | RLS with no policy for the app role (true today for every `metrics_worker` table) | Direct table reads silently return `[]`; writes fail | Use RPCs, or add policies in migrations (section 9). AppOps does not manage RLS |
-| Token not marked secret | Plaintext token in state or preview | Explicit `pulumi.ToSecret` plus a test |
+| Token not marked secret | Plaintext token in state or preview | The Cloudflare SDK wraps `Value` as secret; AppOps wraps it too, and a mock test asserts the outcome |
 | `Mint` output is not stable | Cloudflare secret changes every run | `Sign(nil, ...)` (RFC 6979) and the determinism test (D2) |
 | Removing `api.enabled` later | Drops the grant and the secret | Intended; the role and schema stay protected as today |
 
