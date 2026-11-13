@@ -2,6 +2,8 @@
 
 Status: **draft, nothing implemented, nothing verified against live Supabase.** Every behavior below that depends on Supabase, PostgREST, Cloudflare or a provider is marked **Untested** until someone runs it. Follow the rules in [`../../AGENTS.md`](../../AGENTS.md): no `pulumi` or `run.sh` command is run as part of writing code, only the Go checks.
 
+Phase 0 ran on 2026-11-13 against an **isolated local Supabase stack**, not the hosted project; results and what still needs a hosted check are in section 8.
+
 Revised 2026-11-13 after a review against `infra/appops/`, `db/supabase/migrations/` and the Supabase signing-keys docs. Changes: ES256 instead of RS256, the signing key is stored as a JWK whose `kid` you choose, a function `EXECUTE` grant is now required (metrics-worker cannot work without it), the token is marked secret explicitly, the token gets its own rotation trigger, and Phase 0 moves off the production project.
 
 ## 1. Intent
@@ -25,9 +27,9 @@ The current migrations make the scoped role unusable for RPCs as they stand:
 
 - `metrics_worker.record_site_events` and `metrics_worker.record_worker_health` run `REVOKE ALL ... FROM PUBLIC` and grant `EXECUTE` only to `service_role` and `postgres`. The worker writes through `/rest/v1/rpc/...`, so a role token fails on its first write.
 - The `shortener` RPCs follow the same pattern.
-- Tables in these schemas have RLS enabled, with only "public can read" `SELECT` policies. The app role does not bypass RLS, so reads work only where such a policy covers it, and direct table writes are blocked. The functions are `SECURITY DEFINER`, so `EXECUTE` is the only grant the RPC path needs.
+- Tables in these schemas have RLS enabled. The "public can read" `SELECT` policies apply only to `anon` and `authenticated`, and the app role does not bypass RLS. **Reads as the app role return an empty result, not an error** (confirmed on the local stack: `200 []` on tables that held rows). Direct table writes are blocked. The functions are `SECURITY DEFINER`, so `EXECUTE` is the only grant the RPC path needs (confirmed locally: `403 permission denied for function` before the grant, success after).
 
-So function `EXECUTE` is part of this plan (`permissions.functions`, section 4), not a follow-up. D1 holds only once that grant exists.
+So function `EXECUTE` is part of this plan (`permissions.functions`, section 4), not a follow-up. D1 holds only once that grant exists. Apps that read tables over REST also need RLS policies that cover their role; that is a migration concern outside AppOps (section 9).
 
 ## 2. Goals, non-goals, anti-goals
 
@@ -123,7 +125,7 @@ New and changed code, in dependency order. Use the standard library for JWK pars
    - Defaults and validation in `Validate()`.
    - Add `func (c *AppConfig) APITokenSecretName(env string) string` returning `APP_<NAME>_<ENV>_API_TOKEN`, built the same way as `SecretName`. Check the combined name length against the Secrets Store limit (**unknown; verify**).
 2. `internal/apijwt/apijwt.go` (new package)
-   - `ParseSigningJWK(jwk string) (*ecdsa.PrivateKey, string, error)` returning the key and its `kid`. Reject anything that is not an EC P-256 private key with a `kid`. Verify the standard library's API for building a key from raw `d`/`x`/`y` on Go 1.26 before writing it.
+   - `ParseSigningJWK(jwk string) (*ecdsa.PrivateKey, string, error)` returning the key and its `kid`. Reject anything that is not an EC P-256 private key with a `kid`. Build the key with `ecdsa.ParseRawPrivateKey(elliptic.P256(), d)` (Go 1.26 standard library; used successfully in Phase 0) and reject the JWK if its `x`/`y` do not match the derived public key.
    - `Mint(key *ecdsa.PrivateKey, kid, role string, iat, exp time.Time) (string, error)` producing `base64url(header).base64url(payload).base64url(sig)` with header `{"alg":"ES256","kid":<kid>,"typ":"JWT"}` and payload `{"role":<role>,"iat":..,"exp":..,"iss":"appops"}`. Sign the SHA-256 digest with `key.Sign(nil, digest, crypto.SHA256)` (deterministic, see D2), then convert ASN.1 to raw `r || s`. Marshal with a fixed field order (use a struct, not a map) so output is stable.
    - Start with exactly those claims. If Supabase or PostgREST rejects the token over `iss`, a missing `aud` or similar, change the claims after Phase 0 and record it here.
 3. `internal/postgres/postgres.go`
@@ -154,7 +156,7 @@ New and changed code, in dependency order. Use the standard library for JWK pars
 
 One-time project setup (by you, in the Supabase dashboard; not done by AppOps). Do not do this on production until Phase 0 has passed on a separate project.
 
-1. Generate a P-256 private key as a JWK with a `kid` you choose (for example a UUID). Choose the tool in Phase 0 and record it here. Keep the private key out of the repository.
+1. Generate a P-256 private key as a JWK: `supabase gen signing-key --algorithm ES256 > key.json` (the CLI describes the output as usable "to import in the dashboard"; it sets a UUID `kid`). It prints the private key to standard output, so redirect it to a file outside the repository and do not run it where output is logged. Used on the local stack in Phase 0; the dashboard import is **Untested**.
 2. Import it as a standby key in Supabase with the same `kid`.
 3. Make it current with **Rotate key**. This step is required: Supabase accepts signatures from the current key only, not from a standby key. While it is current, Supabase Auth signs new user tokens with it. Existing user tokens stay valid, and the legacy secret stays trusted until you revoke it.
 4. Put the private JWK in the AppOps environment.
@@ -182,7 +184,7 @@ Kill switch for one app: set `api.enabled: false` (removes the membership and th
 | Hosted Supabase may restrict `GRANT <role> TO authenticator` | The whole approach fails for that app | Phase 0 tests it before any code |
 | PostgREST or Supabase may reject `iss` or require `aud` | Requests rejected | Test in Phase 0 and adjust the claims in `apijwt` |
 | RPCs revoke `EXECUTE` from `PUBLIC` (known for metrics-worker and shortener) | RPCs fail with a permission error | `permissions.functions` in this plan |
-| RLS with no policy for the app role | Direct table reads return nothing; writes fail | Use RPCs, or add policies in migrations. AppOps does not manage RLS |
+| RLS with no policy for the app role (true today for every `metrics_worker` table) | Direct table reads silently return `[]`; writes fail | Use RPCs, or add policies in migrations (section 9). AppOps does not manage RLS |
 | Token not marked secret | Plaintext token in state or preview | Explicit `pulumi.ToSecret` plus a test |
 | `Mint` output is not stable | Cloudflare secret changes every run | `Sign(nil, ...)` (RFC 6979) and the determinism test (D2) |
 | Removing `api.enabled` later | Drops the grant and the secret | Intended; the role and schema stay protected as today |
@@ -200,11 +202,30 @@ Phase 0, a manual spike before any code (you run it; it needs your say-so). Run 
 
 Write the results into this document. If (a) or (b) fails, stop and rethink. If ES256 fails but RS256 works, switch D2.
 
+### Phase 0 results: local stack, 2026-11-13
+
+Setup: Supabase CLI 3.1.0, an isolated copy of `db/supabase` with its own `project_id` (no link to the hosted project), PostgreSQL 17.11, all four repository migrations applied, an ES256 key from `supabase gen signing-key` loaded through `[auth] signing_keys_path`. A role `app_metrics_worker_dev` was created with the grants AppOps gives metrics-worker. Tokens were signed by a throwaway Go program using `Sign(nil, ...)` and the ASN.1-to-raw conversion. The stack, its volumes and the key were deleted afterwards.
+
+| Check | Result |
+| --- | --- |
+| (a) `GRANT <role> TO authenticator` as `postgres` | **Pass.** `postgres` is not a superuser but holds `ADMIN` on the role (granted automatically by `supabase_admin`). Membership: `set_option` true, `inherit_option` false, as PostgREST needs |
+| (b) ES256 token with `role: app_metrics_worker_dev` | **Pass.** `current_user` inside the request is the app role. Same inputs give the same token |
+| (c) claims | `iss: "appops"` accepted. Expired token: `401 PGRST303`. Wrong `kid` or tampered signature: `401 PGRST301`. Unknown role: `401`. Existing role not granted to `authenticator`: `403 permission denied to set role` |
+| (d) RPCs and RLS | RPC without `EXECUTE`: `403`. After `GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA`: success. Table reads: `200 []` because policies cover only `anon` and `authenticated` |
+| (e), (f) | **Not testable locally** (hosted key states and Auth) |
+
+Local-only behavior that must not be relied on: the local gateway accepted requests **without an `apikey`** and tokens **without `exp`**. Hosted Supabase documents both as required; keep sending both.
+
+Still needed on a hosted (throwaway) project before Phase 7: (b) with a key **imported through the dashboard** and made current; whether the hosted gateway enforces `apikey` and `exp`; (e); (f).
+
+Unrelated finding: on the local stack, `anon` and `authenticated` hold `EXECUTE` on `metrics_worker.record_site_events` and `metrics_worker.record_worker_health`, and calls with **only the publishable key** succeeded. See section 9.
+
 Phase 1: config options (`api`, `permissions.functions`), validation and tests. Phase 2: `apijwt` package and tests. Phase 3: authenticator grant, function grants and tests. Phase 4: token publication and tests. Phase 5: `main.go` wiring, time resource, exports. Phase 6: documentation. Each phase leaves the existing flow unchanged for apps without the new options. Phase 7, live verification: preview shows only the expected additions for one app; `up`; the secret exists; a real REST call and a real RPC call succeed as the app's role; a call to another schema fails.
 
 ## 9. Follow-ups outside this plan
 
-- metrics-worker cutover: add `api` and `permissions.functions: [EXECUTE]` to its `appops.yaml`, add a `[[secrets_store_secrets]]` binding, read the token with `await env.API_TOKEN.get()`, send it as `Authorization: Bearer` with the publishable key as `apikey`, confirm its reads are covered by the existing "public can read" policies, then delete the `SUPABASE_SERVICE_ROLE_KEY` Wrangler secret. The Secrets Store binding is **Untested** and not available under `wrangler dev`.
+- metrics-worker cutover: add `api` and `permissions.functions: [EXECUTE]` to its `appops.yaml`, add a `[[secrets_store_secrets]]` binding, read the token with `await env.API_TOKEN.get()`, send it as `Authorization: Bearer` with the publishable key as `apikey`, then delete the `SUPABASE_SERVICE_ROLE_KEY` Wrangler secret. The Secrets Store binding is **Untested** and not available under `wrangler dev`. Before cutover, decide how the worker reads tables: the existing "public can read" policies cover only `anon` and `authenticated`, so reads as the app role return `[]`. Either read through `SECURITY DEFINER` RPCs or add policies for the app role in a migration. A policy naming `app_metrics_worker_<env>` directly breaks on databases where that role does not exist (local, CI), so a `NOLOGIN` group role granted to the app role, or a guarded `DO` block, is likely needed; design that separately.
+- **Security (pre-existing, outside this plan):** `anon` and `authenticated` can execute the metrics-worker write RPCs. The migrations revoke `EXECUTE` from `PUBLIC` only, while Supabase's default privileges grant it to those roles explicitly. On the local stack a request with only the publishable key called both functions successfully. Check the hosted project read-only (`select proname, proacl from pg_proc where pronamespace = 'metrics_worker'::regnamespace;`) and, if confirmed, add a forward migration that runs `REVOKE EXECUTE ... FROM anon, authenticated`. The shortener RPCs use the same pattern and need the same check.
 - URL shortener: separately decide REST (this feature) or direct Postgres through Hyperdrive. The Hyperdrive experiment is parked on `wip/metrics-worker-hyperdrive`. If REST, the `shortener` schema must also be exposed.
 
 ## 10. Decisions
