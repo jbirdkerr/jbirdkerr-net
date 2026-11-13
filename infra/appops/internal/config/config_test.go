@@ -167,3 +167,73 @@ func TestParseAppConfig_ReservedSchemas(t *testing.T) {
 		t.Error("expected error when default schema derived from name is reserved")
 	}
 }
+
+func TestParseAppConfig_APIDefaultsWhenOmitted(t *testing.T) {
+	cfg, err := ParseAppConfig([]byte("name: app\n"), "appops.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.API.Enabled {
+		t.Error("expected api.enabled to default to false")
+	}
+	if cfg.API.ExpiresInDays != 180 {
+		t.Errorf("expected default api.expires_in_days 180, got %d", cfg.API.ExpiresInDays)
+	}
+	if cfg.API.Version != 1 {
+		t.Errorf("expected default api.version 1, got %d", cfg.API.Version)
+	}
+}
+
+func TestParseAppConfig_APIExplicitValues(t *testing.T) {
+	yamlData := "name: app\napi:\n  enabled: true\n  expires_in_days: 30\n  version: 4\n"
+	cfg, err := ParseAppConfig([]byte(yamlData), "appops.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.API.Enabled || cfg.API.ExpiresInDays != 30 || cfg.API.Version != 4 {
+		t.Errorf("expected enabled/30/4, got %+v", cfg.API)
+	}
+}
+
+func TestParseAppConfig_APIExpiryBounds(t *testing.T) {
+	for _, days := range []string{"7", "365"} {
+		if _, err := ParseAppConfig([]byte("name: app\napi:\n  expires_in_days: "+days+"\n"), "appops.yaml"); err != nil {
+			t.Errorf("expected expires_in_days %s to be accepted, got %v", days, err)
+		}
+	}
+	for _, days := range []string{"6", "366", "-1"} {
+		_, err := ParseAppConfig([]byte("name: app\napi:\n  expires_in_days: "+days+"\n"), "appops.yaml")
+		if err == nil || !strings.Contains(err.Error(), "api.expires_in_days") {
+			t.Errorf("expected api.expires_in_days error for %s, got %v", days, err)
+		}
+	}
+}
+
+func TestParseAppConfig_APIVersionNegative(t *testing.T) {
+	_, err := ParseAppConfig([]byte("name: app\napi:\n  version: -1\n"), "appops.yaml")
+	if err == nil || !strings.Contains(err.Error(), "api.version") {
+		t.Errorf("expected api.version error, got %v", err)
+	}
+}
+
+func TestParseAppConfig_FunctionPermissions(t *testing.T) {
+	cfg, err := ParseAppConfig([]byte("name: app\npermissions:\n  functions:\n    - execute\n"), "appops.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Permissions.Functions) != 1 {
+		t.Errorf("expected 1 function permission, got %d", len(cfg.Permissions.Functions))
+	}
+
+	_, err = ParseAppConfig([]byte("name: app\npermissions:\n  functions:\n    - ALL\n"), "appops.yaml")
+	if err == nil || !strings.Contains(err.Error(), "invalid function permission") {
+		t.Errorf("expected invalid function permission error, got %v", err)
+	}
+}
+
+func TestAPITokenSecretName(t *testing.T) {
+	cfg := &AppConfig{Name: "metrics-worker"}
+	if got := cfg.APITokenSecretName("prod"); got != "APP_METRICS_WORKER_PROD_API_TOKEN" {
+		t.Errorf("got %q, want APP_METRICS_WORKER_PROD_API_TOKEN", got)
+	}
+}

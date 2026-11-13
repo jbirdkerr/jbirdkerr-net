@@ -78,6 +78,24 @@ select has_table_privilege('app_<app>_dev', '<schema>.<table>', 'SELECT') as can
 
 Status: configuring permissions **Verified** (catalog and probe-table checks on the live database). The refresh-and-up re-grant after a move is **verified once**: after the metrics-worker move, `./run.sh refresh` then `up` restored the role's access (`has_table_privilege` returned true, 2026-11-12). If `refresh` does not show a missing grant in another case, run the `GRANT`s once as the admin user instead.
 
+### API token and function options (not implemented yet)
+
+These options are parsed and validated, but **AppOps does not act on them yet**: setting them creates no grants, no token and no secret. They are being built in stages from [API_CREDENTIALS_PLAN.md](./design/API_CREDENTIALS_PLAN.md); this section will describe the behavior once it exists.
+
+```yaml
+permissions:
+  functions:
+    - EXECUTE          # the only allowed value
+api:
+  enabled: true        # default false
+  expires_in_days: 180 # default 180; allowed 7..365
+  version: 1           # default 1; positive integer
+```
+
+The token secret will be named `APP_<NAME>_<ENV>_API_TOKEN`.
+
+Status: validation **covered by unit tests**; no live behavior to verify yet.
+
 ## 4. Previewing and deploying
 
 ```bash
