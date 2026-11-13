@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -64,7 +65,22 @@ type CredentialsConfig struct {
 type APIConfig struct {
 	Enabled       bool `yaml:"enabled"`
 	ExpiresInDays int  `yaml:"expires_in_days"`
-	Version       int  `yaml:"version"`
+	// IssuedOn (YYYY-MM-DD) anchors the token: iat is midnight UTC that day and exp is
+	// IssuedOn + ExpiresInDays. Changing it re-mints the token. Required when Enabled.
+	IssuedOn string `yaml:"issued_on"`
+
+	issuedAt time.Time
+}
+
+// now is the clock used by validation; tests replace it.
+var now = time.Now
+
+// IssuedAt returns midnight UTC on api.issued_on (zero if unset).
+func (a APIConfig) IssuedAt() time.Time { return a.issuedAt }
+
+// ExpiresAt returns IssuedAt plus api.expires_in_days.
+func (a APIConfig) ExpiresAt() time.Time {
+	return a.issuedAt.AddDate(0, 0, a.ExpiresInDays)
 }
 
 // AppConfig represents an individual application's appops.yaml
@@ -144,11 +160,18 @@ func (c *AppConfig) Validate() error {
 		return fmt.Errorf("field 'api.expires_in_days' must be between %d and %d", MinAPIExpiresInDays, MaxAPIExpiresInDays)
 	}
 
-	if c.API.Version == 0 {
-		c.API.Version = 1
-	}
-	if c.API.Version < 0 {
-		return fmt.Errorf("field 'api.version' must be a positive integer")
+	if issued := strings.TrimSpace(c.API.IssuedOn); issued != "" {
+		t, err := time.Parse(time.DateOnly, issued)
+		if err != nil {
+			return fmt.Errorf("field 'api.issued_on' must be a date in YYYY-MM-DD form, got %q", c.API.IssuedOn)
+		}
+		// One day of slack covers operators whose local date is ahead of UTC.
+		if t.After(now().UTC().AddDate(0, 0, 1)) {
+			return fmt.Errorf("field 'api.issued_on' (%s) is in the future", issued)
+		}
+		c.API.issuedAt = t
+	} else if c.API.Enabled {
+		return fmt.Errorf("field 'api.issued_on' is required when api.enabled is true (set it to today's date, YYYY-MM-DD)")
 	}
 
 	// Validate Schema identifier

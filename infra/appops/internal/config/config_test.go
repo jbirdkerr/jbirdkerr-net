@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseAppConfig_Valid(t *testing.T) {
@@ -168,6 +169,18 @@ func TestParseAppConfig_ReservedSchemas(t *testing.T) {
 	}
 }
 
+// fixNow pins the validation clock for one test.
+func fixNow(t *testing.T, ts string) {
+	t.Helper()
+	fixed, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := now
+	now = func() time.Time { return fixed }
+	t.Cleanup(func() { now = old })
+}
+
 func TestParseAppConfig_APIDefaultsWhenOmitted(t *testing.T) {
 	cfg, err := ParseAppConfig([]byte("name: app\n"), "appops.yaml")
 	if err != nil {
@@ -179,19 +192,50 @@ func TestParseAppConfig_APIDefaultsWhenOmitted(t *testing.T) {
 	if cfg.API.ExpiresInDays != 180 {
 		t.Errorf("expected default api.expires_in_days 180, got %d", cfg.API.ExpiresInDays)
 	}
-	if cfg.API.Version != 1 {
-		t.Errorf("expected default api.version 1, got %d", cfg.API.Version)
-	}
 }
 
-func TestParseAppConfig_APIExplicitValues(t *testing.T) {
-	yamlData := "name: app\napi:\n  enabled: true\n  expires_in_days: 30\n  version: 4\n"
+func TestParseAppConfig_APIIssuedOnSetsIssueAndExpiry(t *testing.T) {
+	fixNow(t, "2026-11-13T12:00:00Z")
+	yamlData := "name: app\napi:\n  enabled: true\n  issued_on: 2026-11-01\n  expires_in_days: 30\n"
 	cfg, err := ParseAppConfig([]byte(yamlData), "appops.yaml")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !cfg.API.Enabled || cfg.API.ExpiresInDays != 30 || cfg.API.Version != 4 {
-		t.Errorf("expected enabled/30/4, got %+v", cfg.API)
+	wantIat := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	if got := cfg.API.IssuedAt(); !got.Equal(wantIat) {
+		t.Errorf("IssuedAt = %v, want %v", got, wantIat)
+	}
+	if got := cfg.API.ExpiresAt(); !got.Equal(wantIat.AddDate(0, 0, 30)) {
+		t.Errorf("ExpiresAt = %v, want %v", got, wantIat.AddDate(0, 0, 30))
+	}
+}
+
+func TestParseAppConfig_APIEnabledRequiresIssuedOn(t *testing.T) {
+	_, err := ParseAppConfig([]byte("name: app\napi:\n  enabled: true\n"), "appops.yaml")
+	if err == nil || !strings.Contains(err.Error(), "api.issued_on") {
+		t.Errorf("expected api.issued_on error, got %v", err)
+	}
+}
+
+func TestParseAppConfig_APIIssuedOnFormat(t *testing.T) {
+	fixNow(t, "2026-11-13T12:00:00Z")
+	for _, v := range []string{"11/01/2026", "2026-13-01", "2026-11-01T00:00:00Z", "yesterday"} {
+		_, err := ParseAppConfig([]byte("name: app\napi:\n  enabled: true\n  issued_on: \""+v+"\"\n"), "appops.yaml")
+		if err == nil || !strings.Contains(err.Error(), "api.issued_on") {
+			t.Errorf("expected api.issued_on error for %q, got %v", v, err)
+		}
+	}
+}
+
+func TestParseAppConfig_APIIssuedOnNotInFuture(t *testing.T) {
+	fixNow(t, "2026-11-13T12:00:00Z")
+	// One day of slack covers operators ahead of UTC.
+	if _, err := ParseAppConfig([]byte("name: app\napi:\n  enabled: true\n  issued_on: 2026-11-14\n"), "appops.yaml"); err != nil {
+		t.Errorf("expected tomorrow (UTC) to be accepted, got %v", err)
+	}
+	_, err := ParseAppConfig([]byte("name: app\napi:\n  enabled: true\n  issued_on: 2026-11-15\n"), "appops.yaml")
+	if err == nil || !strings.Contains(err.Error(), "future") {
+		t.Errorf("expected future-date error, got %v", err)
 	}
 }
 
@@ -206,13 +250,6 @@ func TestParseAppConfig_APIExpiryBounds(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "api.expires_in_days") {
 			t.Errorf("expected api.expires_in_days error for %s, got %v", days, err)
 		}
-	}
-}
-
-func TestParseAppConfig_APIVersionNegative(t *testing.T) {
-	_, err := ParseAppConfig([]byte("name: app\napi:\n  version: -1\n"), "appops.yaml")
-	if err == nil || !strings.Contains(err.Error(), "api.version") {
-		t.Errorf("expected api.version error, got %v", err)
 	}
 }
 

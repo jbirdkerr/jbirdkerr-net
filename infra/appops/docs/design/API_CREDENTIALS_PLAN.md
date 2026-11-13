@@ -93,15 +93,15 @@ ES256 is Supabase's recommendation, so there is no trade-off left to accept. RS2
 api:
   enabled: true        # default false; omit the block to opt out
   expires_in_days: 180 # default 180; allowed 7..365
-  version: 1           # default 1; bump to re-mint the token only
+  issued_on: 2026-11-13 # required when enabled; change it to re-mint the token
 
 permissions:
   functions:
     - EXECUTE          # optional; the only allowed value
 ```
 
-- **Token rotation (D3):** the token is re-minted when `api.version` **or** `credentials.version` changes. Bumping `api.version` refreshes an expiring token without rotating the database password. Bumping `credentials.version` rotates both, as a full credential rotation should. Changing `expires_in_days` also re-mints, because `exp` changes.
-- **Validation** (add to `internal/config`, with tests): `expires_in_days` an integer in range; `api.version` positive (default 1, same rules as `credentials.version`); `permissions.functions` only `EXECUTE`, case-insensitive like the other permissions; `api` accepted for any app; enabling it requires the project-level setting below at program start.
+- **Token rotation (D3, revised in Phase 5):** `iat` is midnight UTC on `api.issued_on` and `exp` is `iat + expires_in_days`. Changing `issued_on` (or `expires_in_days`) re-mints the token without rotating the database password. Bumping `credentials.version` rotates only the password; a full rotation changes both. This replaced the earlier `api.version` plus `time.Static` design (section 10, D3).
+- **Validation** (add to `internal/config`, with tests): `expires_in_days` an integer in range; `api.issued_on` a `YYYY-MM-DD` date, required when `api.enabled`, at most one day ahead of today (UTC); `permissions.functions` only `EXECUTE`, case-insensitive like the other permissions; `api` accepted for any app; enabling it requires the project-level setting below at program start.
 - `permissions.functions` is independent of `api`, because a direct database connection can call functions too. Without it, an `api` app with only `SECURITY DEFINER` RPCs is unusable, so `docs/OPERATIONS.md` must say so. A validation warning is optional; do not make it an error.
 - Update `docs/OPERATIONS.md` for the new options, as `AGENTS.md` requires.
 
@@ -109,7 +109,7 @@ permissions:
 
 | Setting | Source | Secret? | Meaning |
 | --- | --- | --- | --- |
-| `SUPABASE_JWT_SIGNING_JWK` | environment (`.env`, gitignored) or Pulumi secret config (`appops:supabaseJwtSigningJwk`) | **Yes** | The P-256 **private** JWK imported into Supabase, as single-line JSON. Must include `kid`; AppOps takes the `kid` from it, so there is no separate `kid` setting |
+| `SUPABASE_JWT_SIGNING_JWK` | environment only (`.env`, gitignored), like the database password | **Yes** | The P-256 **private** JWK imported into Supabase, as single-line JSON. Must include `kid`; AppOps takes the `kid` from it, so there is no separate `kid` setting |
 
 It is required only when at least one discovered app has `api.enabled`. If any such app exists and the key is missing or malformed, the program fails before creating resources (fail closed, clear message that does not include the key). Check at parse time that `kty` is `EC`, `crv` is `P-256`, `kid` is non-empty, and `x`/`y` match `d`. Add a placeholder to `.env.example`, never a real value. Do not log the key.
 
@@ -120,7 +120,7 @@ The publishable key is public by design. AppOps does **not** publish it; apps ta
 New and changed code, in dependency order. Use the standard library for JWK parsing and signing (no JWT or JOSE package) to avoid a new dependency and license review.
 
 1. `internal/config/config.go`
-   - Add `APIConfig { Enabled bool; ExpiresInDays int; Version int }` and `API APIConfig` on `AppConfig` (yaml `api`).
+   - Add `APIConfig { Enabled bool; ExpiresInDays int; IssuedOn string }` (plus `IssuedAt()` and `ExpiresAt()`) and `API APIConfig` on `AppConfig` (yaml `api`).
    - Add `Functions []string` to `PermissionsConfig` (yaml `functions`).
    - Defaults and validation in `Validate()`.
    - Add `func (c *AppConfig) APITokenSecretName(env string) string` returning `APP_<NAME>_<ENV>_API_TOKEN`, built the same way as `SecretName`. Check the combined name length against the Secrets Store limit (**unknown; verify**).
@@ -137,9 +137,9 @@ New and changed code, in dependency order. Use the standard library for JWK pars
    - Add `PublishAPIToken(ctx, app, env, token pulumi.StringOutput, store, deps...)` mirroring `PublishDatabaseURL`: resource name `<app>-<env>-api-token`, secret name from `APITokenSecretName`, scope `workers`, comment `Managed by AppOps`.
    - Wrap the value in `pulumi.ToSecret(...)`. The token is computed from non-secret time outputs and a key held in a Go variable, so its own Output is not secret. Checked during Phase 4: `pulumi-cloudflare` v6.23.3's `NewSecretsStoreSecret` already wraps `Value` with `pulumi.ToSecret` and lists `value` in `AdditionalSecretOutputs`, so the explicit wrap is a safeguard against a future SDK change, not the only protection. A mock test asserts the value sent is secret.
 5. `main.go`
-   - Read and parse the signing JWK once, only if any app has `api.enabled`. If it comes from Pulumi secret config, keep it as a secret `Output` and mint inside an `Apply` over it.
-   - Add a time resource for a stable `iat`: `github.com/pulumiverse/pulumi-time` `time.Static` with triggers `{credentials_version, api_version}`. **Verify the module path, resource API and license (believed MPL-2.0, which is AGPL-compatible) before adding it to `go.mod`.** The reason: calling `time.Now()` inside the program would change the token every run. Compute `exp = iat + expires_in_days`.
-   - For each app with `api.enabled`: derive the token with `ApplyT` from the time resource outputs, wrap it with `pulumi.ToSecret`, then call `PublishAPIToken` with dependencies on the role, schema grant, function grant (if any) and the authenticator grant.
+   - Read and parse the signing JWK once from `SUPABASE_JWT_SIGNING_JWK`, only if any app has `api.enabled`, before any resource is registered (`internal/apitoken.LoadSigningKey`).
+   - For each app with `api.enabled` (`internal/apitoken.Provision`): mint the token from `api.issued_on` and `expires_in_days` (no clock involved, so it is deterministic), refuse to publish one that has already expired, warn within 30 days of expiry, wrap it with `pulumi.ToSecret`, then call `PublishAPIToken` with dependencies on the role, schema grant, function grant (if any) and the authenticator grant.
+   - No time resource. Phase 5 checked `github.com/pulumiverse/pulumi-time/sdk`: latest release v0.1.0 (2024-09-04), Apache-2.0 (not MPL-2.0 as guessed), provider binary downloaded from GitHub at run time. A third-party, two-year-old provider process would inherit the AppOps environment, including the signing key, so it was replaced by `api.issued_on`.
    - Export `apiTokenExpiresAt-<app>` so the expiry is visible in `pulumi stack output` (outputs only, no secrets).
 6. `.env.example`, `docs/OPERATIONS.md`, `README.md`, `AGENTS.md` (conventions: add the token secret naming rule)
    - Document setup, rotation, kill switch and limitations (sections 6 to 8). Mark each procedure verified, partly verified or untested, honestly.
@@ -167,9 +167,9 @@ The imported key stays current while the project does not use Supabase Auth (D5)
 
 Do not revoke the legacy JWT secret while anything still uses a legacy key. Check which kind of key the worker's `SUPABASE_SERVICE_ROLE_KEY` is (a legacy JWT or an `sb_secret_` key) before any revocation.
 
-Enabling an app: add the `api` block (and `permissions.functions` if the app calls RPCs), `./run.sh preview`, review that only the expected resources appear (authenticator grant, function grants if requested, time resource, one secret), then `up`. The project's REST schema exposure (hosted dashboard setting and `[api] schemas` in `db/supabase/config.toml`) is still a manual prerequisite: `metrics_worker` is exposed today, `shortener` is not.
+Enabling an app: add the `api` block (and `permissions.functions` if the app calls RPCs), `./run.sh preview`, review that only the expected resources appear (authenticator grant, function grants if requested, one secret), then `up`. The project's REST schema exposure (hosted dashboard setting and `[api] schemas` in `db/supabase/config.toml`) is still a manual prerequisite: `metrics_worker` is exposed today, `shortener` is not.
 
-Rotating a token: bump `api.version` (token only) or `credentials.version` (token and database password), preview, `up`. The worker reads the secret at request time, so no worker redeploy is needed (per `OPERATIONS.md`, **Untested**).
+Rotating a token: set `api.issued_on` to today, preview, `up` (token only; `credentials.version` rotates the password). The worker reads the secret at request time, so no worker redeploy is needed (per `OPERATIONS.md`, **Untested**).
 
 Kill switch for one app: set `api.enabled: false` (removes the membership and the secret) or run `REVOKE <app role> FROM authenticator` by hand for an immediate stop. A token stays cryptographically valid until its `exp` even after the secret is deleted; what stops it working is the removed membership. Revoking the signing key in Supabase invalidates every app's token at once.
 
@@ -180,7 +180,7 @@ Kill switch for one app: set `api.enabled: false` (removes the membership and th
 | The signing key can mint a token for **any** role, including `service_role` | Whoever holds it owns the project's API. AppOps (and the operator's machine) becomes the most sensitive component | Keep it out of git and logs, load it only when an app opts in, treat the AppOps environment as production-secret, document it |
 | Making the imported key current changes what Supabase Auth signs with | Project-wide change made for a per-app feature | Phase 0 on a separate project; no effect while Supabase Auth is unused; rotate to a Supabase-managed key before enabling Auth (D5) |
 | The imported key is "previously used" and someone revokes it while tidying keys | Every app's REST token stops working at once | Document in `OPERATIONS.md` that the key must not be revoked while any app has `api.enabled` |
-| Expiry with manual applies | If nobody runs `up` before `exp`, the app's REST calls fail with an auth error | Default 180 days; export the expiry; `api.version` re-mints without a password rotation; document a calendar reminder. A scheduled job is a possible follow-up, not in scope |
+| Expiry with manual applies | If nobody runs `up` before `exp`, the app's REST calls fail with an auth error | Default 180 days; export the expiry; changing `api.issued_on` re-mints without a password rotation; AppOps warns within 30 days and refuses an expired token; document a calendar reminder. A scheduled job is a possible follow-up, not in scope |
 | Hosted Supabase may restrict `GRANT <role> TO authenticator` | The whole approach fails for that app | Phase 0 tests it before any code |
 | PostgREST or Supabase may reject `iss` or require `aud` | Requests rejected | Test in Phase 0 and adjust the claims in `apijwt` |
 | RPCs revoke `EXECUTE` from `PUBLIC` (known for metrics-worker and shortener) | RPCs fail with a permission error | `permissions.functions` in this plan |
@@ -220,7 +220,7 @@ Still needed on a hosted (throwaway) project before Phase 7: (b) with a key **im
 
 Unrelated finding: on the local stack, `anon` and `authenticated` hold `EXECUTE` on `metrics_worker.record_site_events` and `metrics_worker.record_worker_health`, and calls with **only the publishable key** succeeded. See section 9.
 
-Phase 1: config options (`api`, `permissions.functions`), validation and tests. Phase 2: `apijwt` package and tests. Phase 3: authenticator grant, function grants and tests. Phase 4: token publication and tests. Phase 5: `main.go` wiring, time resource, exports. Phase 6: documentation. Each phase leaves the existing flow unchanged for apps without the new options. Phase 7, live verification: preview shows only the expected additions for one app; `up`; the secret exists; a real REST call and a real RPC call succeed as the app's role; a call to another schema fails.
+Phase 1: config options (`api`, `permissions.functions`), validation and tests. Phase 2: `apijwt` package and tests. Phase 3: authenticator grant, function grants and tests. Phase 4: token publication and tests. Phase 5: `main.go` wiring, exports. Phase 6: documentation. Each phase leaves the existing flow unchanged for apps without the new options. Phase 7, live verification: preview shows only the expected additions for one app; `up`; the secret exists; a real REST call and a real RPC call succeed as the app's role; a call to another schema fails.
 
 ## 9. Follow-ups outside this plan
 
@@ -234,6 +234,6 @@ All decisions confirmed by the owner on 2026-11-13.
 
 - **D1 (confirmed)** Scoped role token, not `service_role` power (section 1). Requires `permissions.functions` for apps that use RPCs.
 - **D2 (confirmed)** ES256 with deterministic RFC 6979 signing from the Go standard library (section 3). RS256 only as a fallback if Phase 0 rejects ES256.
-- **D3 (confirmed)** Token rotation: `time.Static` triggered by `credentials.version` and a new `api.version`, so a token can be refreshed without rotating the database password, plus an expiry export. Automated rotation (`time.Rotating`, a scheduled job, or a read-only expiry check) is deferred; it needs its own threat model because a scheduled `up` would put the signing key in CI.
+- **D3 (confirmed; revised 2026-11-13 in Phase 5)** Token rotation: `api.issued_on` in `appops.yaml` anchors `iat` and `exp`; changing it re-mints the token without rotating the database password, and the expiry is exported. Replaces the original `time.Static` keyed to `credentials.version` and `api.version`, after Phase 5 found `pulumi-time` unmaintained since 2024 (section 5). Automated rotation (a scheduled job, or a read-only expiry check) is deferred; it needs its own threat model because a scheduled `up` would put the signing key in CI.
 - **D4 (confirmed)** Default expiry 180 days, range 7 to 365. Supabase requires an `exp` claim, so tokens always expire; the range is this plan's choice and can be widened later.
 - **D5 (confirmed)** Leave the imported key current (A) while the project does not use Supabase Auth. **Before enabling Supabase Auth**, rotate to a new Supabase-managed key (B), so user sessions are never signed with a key held outside Supabase; the imported key stays trusted as "previously used" and AppOps tokens keep working. The imported key can mint any role either way, so B only protects user sessions. B depends on "previously used" trust, which Phase 0 (f) must confirm even though B is not needed yet; if (f) fails, revisit how AppOps signs tokens before adding Auth.

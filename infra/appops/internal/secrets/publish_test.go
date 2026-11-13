@@ -32,7 +32,7 @@ const testToken = "header.payload.signature"
 // publish runs PublishAPIToken with a plain (non-secret) token and one dependency.
 func publish(t *testing.T) *recorder {
 	t.Helper()
-	app, err := config.ParseAppConfig([]byte("name: blog\napi:\n  enabled: true\n"), "appops.yaml")
+	app, err := config.ParseAppConfig([]byte("name: blog\napi:\n  enabled: true\n  issued_on: 2026-11-01\n"), "appops.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -173,7 +173,7 @@ func strs(t *testing.T, in resource.PropertyMap, key string) []string {
 }
 
 func TestProvision_APIEnabledGrantsRoleToAuthenticator(t *testing.T) {
-	names, inputs := provision(t, newApp(t, blogYAML+"api:\n  enabled: true\n"))
+	names, inputs := provision(t, newApp(t, blogYAML+"api:\n  enabled: true\n  issued_on: 2026-11-01\n"))
 	in, ok := inputs["blog-dev-api-authenticator"]
 	if !ok {
 		t.Fatalf("no authenticator grant; resources: %v", names)
@@ -246,5 +246,5 @@ func TestProvision_ReturnsNewResources(t *testing.T) {
 		}
 	}
 	check(blogYAML, false, false)
-	check(blogYAML+"  functions: [EXECUTE]\napi:\n  enabled: true\n", true, true)
+	check(blogYAML+"  functions: [EXECUTE]\napi:\n  enabled: true\n  issued_on: 2026-11-01\n", true, true)
 }

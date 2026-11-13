@@ -20,13 +20,16 @@ This unit changes **real infrastructure** (the production Supabase database and 
 - `internal/config`: `appops.yaml` parsing, validation, naming.
 - `internal/discovery`: scans `apps/*`, rejects conflicts.
 - `internal/postgres`: schema, role, password, grants, default privileges.
-- `internal/secrets`: connection URI and Secrets Store secret.
+- `internal/secrets`: connection URI and Secrets Store secrets.
+- `internal/apijwt`: signing-key parsing and deterministic ES256 tokens.
+- `internal/apitoken`: API token minting and publication for apps with `api.enabled`.
 - `docs/`: `OPERATIONS.md` and `STATE_BACKEND_BOOTSTRAP.md` at the top level; design history under `docs/design/`; `docs/phase6/` holds rehearsal and rollback SQL.
 
 ## Conventions
 
-- Role `app_<name>_<env>`; secret `APP_<NAME>_<ENV>_DATABASE_URL`; resources `<app>-<env>-<kind>`.
-- Rotation is explicit through `credentials.version`. Never regenerate passwords implicitly.
+- Role `app_<name>_<env>`; secrets `APP_<NAME>_<ENV>_DATABASE_URL` and `APP_<NAME>_<ENV>_API_TOKEN`; resources `<app>-<env>-<kind>`.
+- Rotation is explicit through `credentials.version` (password) and `api.issued_on` (API token). Never regenerate passwords or tokens implicitly; tokens must stay deterministic (`internal/apijwt`).
+- `SUPABASE_JWT_SIGNING_JWK` can mint a token for any role. Never log it, put it in Pulumi config in plain text, or include it in errors.
 - Provider versions in `go.mod` matter: `pulumi-postgresql` v3.18+ for `passwordWo`, `pulumi-cloudflare` v6.23+ for `SecretsStoreSecret`. Verify new resource arguments against the provider's SDK source or docs before using them.
 - Keep the `appops.yaml` schema small. A new option needs validation, a test, and an `OPERATIONS.md` update.
 - Do not claim a secret is absent from state without checking the provider's behavior. The Cloudflare secret value is stored (encrypted) in state.
