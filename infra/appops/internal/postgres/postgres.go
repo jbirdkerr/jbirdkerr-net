@@ -21,6 +21,12 @@ type AppResources struct {
 	SequenceGrant    *postgresql.Grant
 	DefaultPrivTable *postgresql.DefaultPrivileges
 	DefaultPrivSeq   *postgresql.DefaultPrivileges
+
+	// Set only when permissions.functions is configured.
+	FunctionGrant       *postgresql.Grant
+	DefaultPrivFunction *postgresql.DefaultPrivileges
+	// Set only when api.enabled: makes authenticator a member of the app role.
+	APIAuthenticatorGrant *postgresql.GrantRole
 }
 
 // ProvisionAppDatabase creates schema, role, generated password, and appropriate privileges for an opted-in application.
@@ -196,15 +202,66 @@ func ProvisionAppDatabase(
 		}
 	}
 
+	// 10. EXECUTE on functions (existing and future) for RPCs over the REST API.
+	// Functions are typically SECURITY DEFINER, so EXECUTE is the only grant they need.
+	// Validation allows only EXECUTE; it is passed in canonical case to avoid drift.
+	var functionGrant *postgresql.Grant
+	var defaultPrivFunction *postgresql.DefaultPrivileges
+	if len(app.Permissions.Functions) > 0 {
+		execute := pulumi.StringArray{pulumi.String("EXECUTE")}
+
+		functionGrant, err = postgresql.NewGrant(ctx, fmt.Sprintf("%s-function-grants", resPrefix), &postgresql.GrantArgs{
+			Database:   pulumi.String(app.Database.Name),
+			Schema:     schema.Name,
+			Role:       role.Name,
+			ObjectType: pulumi.String("function"),
+			Privileges: execute,
+			Objects:    pulumi.StringArray{}, // empty applies to all functions in schema
+		}, pulumi.Provider(pgProvider), pulumi.DependsOn([]pulumi.Resource{schema, role}))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create function grants resource: %w", err)
+		}
+
+		defaultPrivFunction, err = postgresql.NewDefaultPrivileges(ctx, fmt.Sprintf("%s-default-function-privs", resPrefix), &postgresql.DefaultPrivilegesArgs{
+			Database:   pulumi.String(app.Database.Name),
+			Schema:     schema.Name,
+			Owner:      pulumi.String(migrationOwner),
+			Role:       role.Name,
+			ObjectType: pulumi.String("function"),
+			Privileges: execute,
+		}, pulumi.Provider(pgProvider), pulumi.DependsOn([]pulumi.Resource{schema, role}))
+		if err != nil {
+			return nil, fmt.Errorf("failed to configure default function privileges: %w", err)
+		}
+	}
+
+	// 11. Let PostgREST switch to the app role for API tokens (GRANT <app role> TO authenticator).
+	// In GrantRole, Role is the member that receives the membership and GrantRole is the role
+	// granted. authenticator itself is Supabase-managed and never managed here. No ADMIN option.
+	var apiAuthenticatorGrant *postgresql.GrantRole
+	if app.API.Enabled {
+		apiAuthenticatorGrant, err = postgresql.NewGrantRole(ctx, fmt.Sprintf("%s-api-authenticator", resPrefix), &postgresql.GrantRoleArgs{
+			Role:            pulumi.String("authenticator"),
+			GrantRole:       role.Name,
+			WithAdminOption: pulumi.Bool(false),
+		}, pulumi.Provider(pgProvider), pulumi.DependsOn([]pulumi.Resource{role}))
+		if err != nil {
+			return nil, fmt.Errorf("failed to grant app role to authenticator: %w", err)
+		}
+	}
+
 	return &AppResources{
-		Schema:           schema,
-		Role:             role,
-		Password:         password,
-		DatabaseGrant:    dbGrant,
-		SchemaGrant:      schemaGrant,
-		TableGrant:       tableGrant,
-		SequenceGrant:    seqGrant,
-		DefaultPrivTable: defaultPrivTable,
-		DefaultPrivSeq:   defaultPrivSeq,
+		Schema:                schema,
+		Role:                  role,
+		Password:              password,
+		DatabaseGrant:         dbGrant,
+		SchemaGrant:           schemaGrant,
+		TableGrant:            tableGrant,
+		SequenceGrant:         seqGrant,
+		DefaultPrivTable:      defaultPrivTable,
+		DefaultPrivSeq:        defaultPrivSeq,
+		FunctionGrant:         functionGrant,
+		DefaultPrivFunction:   defaultPrivFunction,
+		APIAuthenticatorGrant: apiAuthenticatorGrant,
 	}, nil
 }

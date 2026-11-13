@@ -78,9 +78,15 @@ select has_table_privilege('app_<app>_dev', '<schema>.<table>', 'SELECT') as can
 
 Status: configuring permissions **Verified** (catalog and probe-table checks on the live database). The refresh-and-up re-grant after a move is **verified once**: after the metrics-worker move, `./run.sh refresh` then `up` restored the role's access (`has_table_privilege` returned true, 2026-11-12). If `refresh` does not show a missing grant in another case, run the `GRANT`s once as the admin user instead.
 
-### API token and function options (not implemented yet)
+### API token and function options (partly implemented)
 
-These options are parsed and validated, but **AppOps does not act on them yet**: setting them creates no grants, no token and no secret. They are being built in stages from [API_CREDENTIALS_PLAN.md](./design/API_CREDENTIALS_PLAN.md); this section will describe the behavior once it exists.
+These options are being built in stages from [API_CREDENTIALS_PLAN.md](./design/API_CREDENTIALS_PLAN.md). What they do today:
+
+- `permissions.functions: [EXECUTE]` grants `EXECUTE` on all functions in the app's schema (`<app>-<env>-function-grants`) and on functions `migrationOwner` creates there later (`<app>-<env>-default-function-privs`). Needed for RPCs, because the migrations revoke `EXECUTE` from `PUBLIC`.
+- `api.enabled: true` only makes `authenticator` a member of the app role (`<app>-<env>-api-authenticator`, no admin option), so PostgREST can switch to it. **No token or secret is created yet.** The membership alone grants nothing to anyone without a token signed by the project's key.
+- `api.expires_in_days` and `api.version` are validated but not used yet.
+
+Removing an option removes its grant on the next `up`.
 
 ```yaml
 permissions:
@@ -94,7 +100,7 @@ api:
 
 The token secret will be named `APP_<NAME>_<ENV>_API_TOKEN`.
 
-Status: validation **covered by unit tests**; no live behavior to verify yet.
+Status: **Untested** against the live database; covered by unit tests with Pulumi mocks. The `authenticator` membership and `EXECUTE` grants were exercised as plain SQL on a local Supabase stack (plan section 8), not through AppOps. Whether the provider's empty `objects` list covers all functions in the schema, as it does for tables and sequences, is unverified.
 
 ## 4. Previewing and deploying
 
