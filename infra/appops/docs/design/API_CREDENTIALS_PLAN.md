@@ -1,6 +1,6 @@
 # AppOps API credentials: implementation plan
 
-Status: **draft, nothing implemented, nothing verified against live Supabase.** Every behavior below that depends on Supabase, PostgREST, Cloudflare or a provider is marked **Untested** until someone runs it. Follow the rules in [`../../AGENTS.md`](../../AGENTS.md): no `pulumi` or `run.sh` command is run as part of writing code, only the Go checks.
+Status: **Phases 1 to 6 implemented** (config, `apijwt`, grants, token publication, `main.go` wiring, docs; unit tests with Pulumi mocks). **Nothing verified against live Supabase or Cloudflare yet:** Phase 7 is the checklist in [PHASE7_LIVE_TEST.md](./PHASE7_LIVE_TEST.md). Every behavior below that depends on Supabase, PostgREST, Cloudflare or a provider is marked **Untested** until someone runs it. Follow the rules in [`../../AGENTS.md`](../../AGENTS.md): no `pulumi` or `run.sh` command is run as part of writing code, only the Go checks.
 
 Phase 0 ran on 2026-11-13 against an **isolated local Supabase stack**, not the hosted project; results and what still needs a hosted check are in section 8.
 
