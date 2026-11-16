@@ -78,6 +78,34 @@ select has_table_privilege('app_<app>_dev', '<schema>.<table>', 'SELECT') as can
 
 Status: configuring permissions **Verified** (catalog and probe-table checks on the live database). The refresh-and-up re-grant after a move is **verified once**: after the metrics-worker move, `./run.sh refresh` then `up` restored the role's access (`has_table_privilege` returned true, 2026-11-12). If `refresh` does not show a missing grant in another case, run the `GRANT`s once as the admin user instead.
 
+### Function permissions and API tokens
+
+Both options are off by default; apps without them get exactly the resources described above. Background and decisions: [API_CREDENTIALS_PLAN.md](./design/API_CREDENTIALS_PLAN.md).
+
+```yaml
+permissions:
+  functions:
+    - EXECUTE            # the only allowed value
+api:
+  enabled: true          # default false
+  issued_on: 2026-11-13  # required when enabled; YYYY-MM-DD, not in the future
+  expires_in_days: 180   # default 180; allowed 7..365
+```
+
+- `permissions.functions: [EXECUTE]` grants `EXECUTE` on all functions in the app's schema (`<app>-<env>-function-grants`) and on functions `migrationOwner` creates there later (`<app>-<env>-default-function-privs`). Apps that call RPCs need it, because the migrations revoke `EXECUTE` from `PUBLIC`.
+- `api.enabled: true` makes `authenticator` a member of the app role (`<app>-<env>-api-authenticator`, no admin option) and publishes an ES256 token whose `role` claim is the app role to `APP_<NAME>_<ENV>_API_TOKEN` (`<app>-<env>-api-token`, `workers` scope). The token is issued at midnight UTC on `issued_on` and expires `expires_in_days` later. The expiry is exported as `apiTokenExpiresAt-<app>` (`./run.sh stack output`).
+- The token runs as the app role: it can do what that role's grants allow in its own schema and nothing else, and it does **not** bypass RLS. Tables whose policies cover only `anon` and `authenticated` return no rows to it.
+- The worker sends the token as `Authorization: Bearer <token>` with the project's publishable key as `apikey`.
+- Removing an option removes its grants and secret on the next `up`.
+
+**Signing key.** An app with `api.enabled` requires `SUPABASE_JWT_SIGNING_JWK` in `.env`: the P-256 private JWK imported into Supabase, as one line of JSON with its `kid`. If it is missing or invalid, the run stops before any resource is registered. It is read only when an app needs it and is never logged. This key can mint a token for **any** role, including `service_role`; treat `.env` accordingly. One-time setup (generating, importing and activating the key in the Supabase dashboard) is in plan section 6, and must be done before the first app enables `api`.
+
+**Rotating or renewing a token.** Set `api.issued_on` to today's date, preview, `up`. Only the token secret changes; the database password does not. A full credential rotation means bumping `credentials.version` and updating `issued_on`. A run with no config change leaves the token as is. AppOps warns when a token expires within 30 days and refuses to publish one that has already expired.
+
+**Kill switch.** Set `api.enabled: false` and `up` (removes the membership and the secret), or run `REVOKE app_<app>_<env> FROM authenticator;` as the admin user for an immediate stop. A token stays cryptographically valid until it expires; what stops it working is the removed membership.
+
+Status: **Untested** against the live database and Cloudflare; covered by unit tests with Pulumi mocks. The `authenticator` membership, `EXECUTE` grant and ES256 tokens were exercised on a local Supabase stack (plan section 8), not through AppOps. Whether the provider's empty `objects` list covers all functions in the schema, as it does for tables and sequences, is unverified.
+
 ## 4. Previewing and deploying
 
 ```bash
@@ -175,6 +203,7 @@ Status: **Untested** against the live database. Rehearse with a throwaway app fi
 - A secret is readable by any worker in the account that binds to it.
 - Only the `dev` environment has been exercised.
 - Cross-app permissions, automatic rotation, migration execution and automatic credential injection are out of scope.
-- The metrics-worker does not use its AppOps credential; it stays on the REST API.
+- The metrics-worker does not use its AppOps credential or an API token yet; it stays on the shared service-role key.
+- API tokens expire and AppOps is applied by hand: if nobody updates `api.issued_on` and runs `up` before the exported expiry, the app's REST calls fail.
 - The `app_..._dev` role needs its grants re-applied (`refresh` then `up`) after tables are moved into its schema (§3).
 - Phase 5 (live second app), app removal, schema change and state restore have not been exercised against real infrastructure.

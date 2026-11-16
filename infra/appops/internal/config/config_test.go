@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseAppConfig_Valid(t *testing.T) {
@@ -165,5 +166,111 @@ func TestParseAppConfig_ReservedSchemas(t *testing.T) {
 	// A sanitized default that lands on a reserved name must also be rejected.
 	if _, err := ParseAppConfig([]byte("name: public\n"), "appops.yaml"); err == nil {
 		t.Error("expected error when default schema derived from name is reserved")
+	}
+}
+
+// fixNow pins the validation clock for one test.
+func fixNow(t *testing.T, ts string) {
+	t.Helper()
+	fixed, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := now
+	now = func() time.Time { return fixed }
+	t.Cleanup(func() { now = old })
+}
+
+func TestParseAppConfig_APIDefaultsWhenOmitted(t *testing.T) {
+	cfg, err := ParseAppConfig([]byte("name: app\n"), "appops.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.API.Enabled {
+		t.Error("expected api.enabled to default to false")
+	}
+	if cfg.API.ExpiresInDays != 180 {
+		t.Errorf("expected default api.expires_in_days 180, got %d", cfg.API.ExpiresInDays)
+	}
+}
+
+func TestParseAppConfig_APIIssuedOnSetsIssueAndExpiry(t *testing.T) {
+	fixNow(t, "2026-11-13T12:00:00Z")
+	yamlData := "name: app\napi:\n  enabled: true\n  issued_on: 2026-11-01\n  expires_in_days: 30\n"
+	cfg, err := ParseAppConfig([]byte(yamlData), "appops.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantIat := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	if got := cfg.API.IssuedAt(); !got.Equal(wantIat) {
+		t.Errorf("IssuedAt = %v, want %v", got, wantIat)
+	}
+	if got := cfg.API.ExpiresAt(); !got.Equal(wantIat.AddDate(0, 0, 30)) {
+		t.Errorf("ExpiresAt = %v, want %v", got, wantIat.AddDate(0, 0, 30))
+	}
+}
+
+func TestParseAppConfig_APIEnabledRequiresIssuedOn(t *testing.T) {
+	_, err := ParseAppConfig([]byte("name: app\napi:\n  enabled: true\n"), "appops.yaml")
+	if err == nil || !strings.Contains(err.Error(), "api.issued_on") {
+		t.Errorf("expected api.issued_on error, got %v", err)
+	}
+}
+
+func TestParseAppConfig_APIIssuedOnFormat(t *testing.T) {
+	fixNow(t, "2026-11-13T12:00:00Z")
+	for _, v := range []string{"11/01/2026", "2026-13-01", "2026-11-01T00:00:00Z", "yesterday"} {
+		_, err := ParseAppConfig([]byte("name: app\napi:\n  enabled: true\n  issued_on: \""+v+"\"\n"), "appops.yaml")
+		if err == nil || !strings.Contains(err.Error(), "api.issued_on") {
+			t.Errorf("expected api.issued_on error for %q, got %v", v, err)
+		}
+	}
+}
+
+func TestParseAppConfig_APIIssuedOnNotInFuture(t *testing.T) {
+	fixNow(t, "2026-11-13T12:00:00Z")
+	// One day of slack covers operators ahead of UTC.
+	if _, err := ParseAppConfig([]byte("name: app\napi:\n  enabled: true\n  issued_on: 2026-11-14\n"), "appops.yaml"); err != nil {
+		t.Errorf("expected tomorrow (UTC) to be accepted, got %v", err)
+	}
+	_, err := ParseAppConfig([]byte("name: app\napi:\n  enabled: true\n  issued_on: 2026-11-15\n"), "appops.yaml")
+	if err == nil || !strings.Contains(err.Error(), "future") {
+		t.Errorf("expected future-date error, got %v", err)
+	}
+}
+
+func TestParseAppConfig_APIExpiryBounds(t *testing.T) {
+	for _, days := range []string{"7", "365"} {
+		if _, err := ParseAppConfig([]byte("name: app\napi:\n  expires_in_days: "+days+"\n"), "appops.yaml"); err != nil {
+			t.Errorf("expected expires_in_days %s to be accepted, got %v", days, err)
+		}
+	}
+	for _, days := range []string{"6", "366", "-1"} {
+		_, err := ParseAppConfig([]byte("name: app\napi:\n  expires_in_days: "+days+"\n"), "appops.yaml")
+		if err == nil || !strings.Contains(err.Error(), "api.expires_in_days") {
+			t.Errorf("expected api.expires_in_days error for %s, got %v", days, err)
+		}
+	}
+}
+
+func TestParseAppConfig_FunctionPermissions(t *testing.T) {
+	cfg, err := ParseAppConfig([]byte("name: app\npermissions:\n  functions:\n    - execute\n"), "appops.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Permissions.Functions) != 1 {
+		t.Errorf("expected 1 function permission, got %d", len(cfg.Permissions.Functions))
+	}
+
+	_, err = ParseAppConfig([]byte("name: app\npermissions:\n  functions:\n    - ALL\n"), "appops.yaml")
+	if err == nil || !strings.Contains(err.Error(), "invalid function permission") {
+		t.Errorf("expected invalid function permission error, got %v", err)
+	}
+}
+
+func TestAPITokenSecretName(t *testing.T) {
+	cfg := &AppConfig{Name: "metrics-worker"}
+	if got := cfg.APITokenSecretName("prod"); got != "APP_METRICS_WORKER_PROD_API_TOKEN" {
+		t.Errorf("got %q, want APP_METRICS_WORKER_PROD_API_TOKEN", got)
 	}
 }

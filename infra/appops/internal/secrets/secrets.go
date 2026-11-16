@@ -68,3 +68,34 @@ func PublishDatabaseURL(
 	}
 	return secret, nil
 }
+
+// PublishAPIToken stores the application's API token in Secrets Store as
+// APP_<NAME>_<ENV>_API_TOKEN.
+//
+// The token is derived from non-secret inputs (time outputs and a key held in a Go
+// variable), so its Output is not secret on its own. pulumi-cloudflare v6.23.3's
+// NewSecretsStoreSecret already wraps Value with pulumi.ToSecret; the explicit wrap
+// here keeps the token secret even if a future SDK version stops doing that.
+// Rotate by bumping api.version or credentials.version, not by editing the secret
+// in Cloudflare.
+func PublishAPIToken(
+	ctx *pulumi.Context,
+	app *config.AppConfig,
+	env string,
+	token pulumi.StringOutput,
+	store StoreSettings,
+	deps ...pulumi.Resource,
+) (*cloudflare.SecretsStoreSecret, error) {
+	secret, err := cloudflare.NewSecretsStoreSecret(ctx, fmt.Sprintf("%s-%s-api-token", app.Name, env), &cloudflare.SecretsStoreSecretArgs{
+		AccountId: pulumi.String(store.AccountID),
+		StoreId:   pulumi.String(store.StoreID),
+		Name:      pulumi.String(app.APITokenSecretName(env)),
+		Value:     pulumi.ToSecret(token).(pulumi.StringOutput),
+		Scopes:    pulumi.StringArray{pulumi.String("workers")},
+		Comment:   pulumi.String("Managed by AppOps"),
+	}, pulumi.DependsOn(deps))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create API token secret for %s: %w", app.Name, err)
+	}
+	return secret, nil
+}

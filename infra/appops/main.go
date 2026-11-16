@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
+	"github.com/jbirdkerr/jbirdkerr-net/infra/appops/internal/apitoken"
 	"github.com/jbirdkerr/jbirdkerr-net/infra/appops/internal/discovery"
 	apppostgres "github.com/jbirdkerr/jbirdkerr-net/infra/appops/internal/postgres"
 	"github.com/jbirdkerr/jbirdkerr-net/infra/appops/internal/secrets"
@@ -37,6 +39,14 @@ func main() {
 		}
 
 		ctx.Log.Info(fmt.Sprintf("Discovered %d opted-in application(s) in %s for environment '%s'", len(apps), appsDir, env), nil)
+
+		// Signing key for API tokens: loaded only if an app has api.enabled, and the run
+		// stops here, before any resource is registered, if it is missing or invalid.
+		// Never logged.
+		signingKey, signingKid, err := apitoken.LoadSigningKey(apps, os.Getenv(apitoken.EnvSigningJWK))
+		if err != nil {
+			return err
+		}
 
 		// Instantiate PostgreSQL Provider for the target application database
 		// Reads TARGET_PG* if set, otherwise standard PG* from environment
@@ -152,6 +162,15 @@ func main() {
 			deps := []pulumi.Resource{res.Role, res.DatabaseGrant, res.SchemaGrant}
 			if _, err := secrets.PublishDatabaseURL(ctx, app, env, roleName, res.Password.Result, conn, store, deps...); err != nil {
 				return err
+			}
+
+			// API token for PostgREST, published only after the role and its grants exist.
+			if app.API.Enabled {
+				expiresAt, err := apitoken.Provision(ctx, app, env, roleName, signingKey, signingKid, res, store, time.Now())
+				if err != nil {
+					return err
+				}
+				ctx.Export("apiTokenExpiresAt-"+app.Name, pulumi.String(expiresAt.Format(time.RFC3339)))
 			}
 		}
 

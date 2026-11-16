@@ -136,3 +136,115 @@ func TestProvision_NoPublicSchemaGrants(t *testing.T) {
 		}
 	}
 }
+
+// Resource names are part of Pulumi state; renaming one replaces a live resource.
+func TestProvision_BaselineResourceNamesUnchanged(t *testing.T) {
+	names, _ := provision(t, newApp(t, blogYAML))
+	want := []string{
+		"blog-dev-db-connect", "blog-dev-default-seq-privs", "blog-dev-default-table-privs",
+		"blog-dev-password", "blog-dev-role", "blog-dev-schema", "blog-dev-schema-usage",
+		"blog-dev-seq-grants", "blog-dev-table-grants",
+	}
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Errorf("resource names changed:\n got  %v\n want %v", names, want)
+	}
+}
+
+func str(t *testing.T, in resource.PropertyMap, key string) string {
+	t.Helper()
+	v, ok := in[resource.PropertyKey(key)]
+	if !ok || !v.IsString() {
+		t.Fatalf("input %q missing or not a string: %v", key, in)
+	}
+	return v.StringValue()
+}
+
+func strs(t *testing.T, in resource.PropertyMap, key string) []string {
+	t.Helper()
+	v, ok := in[resource.PropertyKey(key)]
+	if !ok || !v.IsArray() {
+		t.Fatalf("input %q missing or not an array: %v", key, in)
+	}
+	var out []string
+	for _, e := range v.ArrayValue() {
+		out = append(out, e.StringValue())
+	}
+	return out
+}
+
+func TestProvision_APIEnabledGrantsRoleToAuthenticator(t *testing.T) {
+	names, inputs := provision(t, newApp(t, blogYAML+"api:\n  enabled: true\n  issued_on: 2026-11-01\n"))
+	in, ok := inputs["blog-dev-api-authenticator"]
+	if !ok {
+		t.Fatalf("no authenticator grant; resources: %v", names)
+	}
+	if got := str(t, in, "role"); got != "authenticator" {
+		t.Errorf("membership recipient = %q, want authenticator", got)
+	}
+	if got := str(t, in, "grantRole"); got != "app_blog_dev" {
+		t.Errorf("granted role = %q, want app_blog_dev", got)
+	}
+	if v, ok := in["withAdminOption"]; ok && v.IsBool() && v.BoolValue() {
+		t.Error("authenticator must not get ADMIN on the app role")
+	}
+}
+
+func TestProvision_FunctionPermissionsGrantExecute(t *testing.T) {
+	names, inputs := provision(t, newApp(t, blogYAML+"  functions: [execute]\n"))
+	grant, ok := inputs["blog-dev-function-grants"]
+	if !ok {
+		t.Fatalf("no function grant; resources: %v", names)
+	}
+	if str(t, grant, "objectType") != "function" || str(t, grant, "schema") != "blog" ||
+		str(t, grant, "role") != "app_blog_dev" || strings.Join(strs(t, grant, "privileges"), ",") != "EXECUTE" {
+		t.Errorf("unexpected function grant inputs: %v", grant)
+	}
+	if objs := strs(t, grant, "objects"); len(objs) != 0 {
+		t.Errorf("function grant should cover all functions (empty objects), got %v", objs)
+	}
+	def, ok := inputs["blog-dev-default-function-privs"]
+	if !ok {
+		t.Fatalf("no default function privileges; resources: %v", names)
+	}
+	if str(t, def, "objectType") != "function" || str(t, def, "owner") != "postgres" ||
+		str(t, def, "role") != "app_blog_dev" || strings.Join(strs(t, def, "privileges"), ",") != "EXECUTE" {
+		t.Errorf("unexpected default function privilege inputs: %v", def)
+	}
+}
+
+func TestProvision_NewOptionsOffAddNothing(t *testing.T) {
+	names, _ := provision(t, newApp(t, blogYAML+"api:\n  enabled: false\n"))
+	for _, n := range names {
+		if strings.Contains(n, "authenticator") || strings.Contains(n, "function") {
+			t.Errorf("unexpected resource %q when api and functions are off", n)
+		}
+	}
+}
+
+func TestProvision_ReturnsNewResources(t *testing.T) {
+	check := func(yaml string, wantAPI, wantFn bool) {
+		t.Helper()
+		err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+			p, err := postgresql.NewProvider(ctx, "pg", &postgresql.ProviderArgs{})
+			if err != nil {
+				return err
+			}
+			res, err := ProvisionAppDatabase(ctx, newApp(t, yaml), "dev", "postgres", p)
+			if err != nil {
+				return err
+			}
+			if (res.APIAuthenticatorGrant != nil) != wantAPI {
+				t.Errorf("APIAuthenticatorGrant set = %v, want %v", res.APIAuthenticatorGrant != nil, wantAPI)
+			}
+			if (res.FunctionGrant != nil) != wantFn || (res.DefaultPrivFunction != nil) != wantFn {
+				t.Errorf("function resources set = %v/%v, want %v", res.FunctionGrant != nil, res.DefaultPrivFunction != nil, wantFn)
+			}
+			return nil
+		}, pulumi.WithMocks("appops", "test", &recorder{inputs: map[string]resource.PropertyMap{}}))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	check(blogYAML, false, false)
+	check(blogYAML+"  functions: [EXECUTE]\napi:\n  enabled: true\n  issued_on: 2026-11-01\n", true, true)
+}

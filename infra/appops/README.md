@@ -10,6 +10,7 @@ AppOps automatically discovers applications inside `apps/` that opt in by declar
 3. Strong generated passwords via Pulumi's `RandomPassword`.
 4. Least-privilege object grants and default privileges for future migrations.
 5. Secure connection URI publication to Cloudflare Secrets Store (`APP_<APPNAME>_<ENV>_DATABASE_URL`).
+6. Optionally, a signed REST API token that runs as the app's role (`APP_<APPNAME>_<ENV>_API_TOKEN`), and `EXECUTE` on the app's functions. See `docs/OPERATIONS.md` §3.
 
 ## Opting In an Application
 
@@ -78,6 +79,8 @@ infra/appops/
 ├── .env.example                 # Required environment variables (copy to .env)
 ├── README.md                    # Project overview
 ├── internal/
+│   ├── apijwt/                  # Signing-key parsing and deterministic ES256 tokens
+│   ├── apitoken/                # API token minting and publication for api.enabled apps
 │   ├── config/                  # appops.yaml parsing & validation
 │   ├── discovery/               # App discovery & conflict detection
 │   ├── postgres/                # Schema, role, grants, default privileges
