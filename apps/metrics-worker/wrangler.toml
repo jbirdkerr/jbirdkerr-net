@@ -26,6 +26,17 @@ routes = [
 [env.production.vars]
 POSTHOG_PROJECT_ID = "566829"
 SUPABASE_URL = "https://tmjvuvyjhweuzgxkqrhg.supabase.co"
+# Public by design (it identifies the project, it does not authorize anything). The worker uses the
+# AppOps API token only when this is set; without it, it falls back to SUPABASE_SERVICE_ROLE_KEY.
+# SUPABASE_PUBLISHABLE_KEY = "sb_publishable_..."
+
+# AppOps API token (infra/appops, `api.enabled` in appops.yaml). Requests run as the worker's own
+# database role. The AppOps stack is named `dev` but targets this project's database. Secrets Store
+# bindings are not available under `wrangler dev`.
+[[env.production.secrets_store_secrets]]
+binding = "SUPABASE_API_TOKEN"
+store_id = "7fe5a14c652845cfa5bb7786a01053e4"
+secret_name = "APP_METRICS_WORKER_DEV_API_TOKEN"
 
 [observability.logs]
 enabled = true
@@ -38,6 +49,7 @@ enabled = true
 head_sampling_rate = 1
 persist = true
 
-# Remember: SUPABASE_SERVICE_ROLE_KEY is a secret, not a var — set it per environment:
+# Fallback until the AppOps token is live (see SUPABASE_PUBLISHABLE_KEY above); delete the secret
+# once the worker runs on the token. SUPABASE_SERVICE_ROLE_KEY is a secret, not a var:
 #   wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 #   wrangler secret put SUPABASE_SERVICE_ROLE_KEY --env production

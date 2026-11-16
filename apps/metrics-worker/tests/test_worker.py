@@ -4,6 +4,7 @@ import json
 import types
 import unittest
 
+import worker
 from worker import (
     decode_posthog_body,
     escape_html,
@@ -14,6 +15,7 @@ from worker import (
     number,
     render_health_metrics_html,
     render_metrics_html,
+    supabase_auth,
     supabase_headers,
 )
 
@@ -181,19 +183,81 @@ class TestMetricsWorker(unittest.TestCase):
         self.assertIn("100.0%", html)  # decode success rate
         self.assertIn("Pipeline Health", html)
 
-    def test_supabase_headers_read_uses_accept_profile(self):
-        env = types.SimpleNamespace(SUPABASE_SERVICE_ROLE_KEY="key")
-        headers = supabase_headers(env)
-        self.assertEqual(headers["Accept-Profile"], "metrics_worker")
-        self.assertNotIn("Content-Profile", headers)
-        self.assertEqual(headers["Authorization"], "Bearer key")
-
-    def test_supabase_headers_write_uses_content_profile(self):
-        env = types.SimpleNamespace(SUPABASE_SERVICE_ROLE_KEY="key")
-        headers = supabase_headers(env, write=True)
+    def test_supabase_headers_use_content_profile(self):
+        headers = supabase_headers(("publishable", "token"))
+        self.assertEqual(headers["apikey"], "publishable")
+        self.assertEqual(headers["Authorization"], "Bearer token")
         self.assertEqual(headers["Content-Profile"], "metrics_worker")
         self.assertEqual(headers["Content-Type"], "application/json")
         self.assertNotIn("Accept-Profile", headers)
+
+
+class FakeSecret:
+    def __init__(self, value=None, error=None):
+        self.value = value
+        self.error = error
+        self.calls = 0
+
+    async def get(self):
+        self.calls += 1
+        if self.error:
+            raise self.error
+        return self.value
+
+
+class TestSupabaseAuth(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        worker._api_token_cache.update(value=None, expires_at=0.0)
+
+    def env(self, **kwargs):
+        return types.SimpleNamespace(SUPABASE_URL="https://example.supabase.co", **kwargs)
+
+    async def test_prefers_api_token_with_publishable_key(self):
+        env = self.env(
+            SUPABASE_API_TOKEN=FakeSecret("token"),
+            SUPABASE_PUBLISHABLE_KEY="publishable",
+            SUPABASE_SERVICE_ROLE_KEY="service",
+        )
+        self.assertEqual(await supabase_auth(env), ("publishable", "token"))
+
+    async def test_falls_back_when_secret_read_fails(self):
+        env = self.env(
+            SUPABASE_API_TOKEN=FakeSecret(error=RuntimeError("not found")),
+            SUPABASE_PUBLISHABLE_KEY="publishable",
+            SUPABASE_SERVICE_ROLE_KEY="service",
+        )
+        self.assertEqual(await supabase_auth(env), ("service", "service"))
+
+    async def test_falls_back_without_publishable_key(self):
+        secret = FakeSecret("token")
+        env = self.env(SUPABASE_API_TOKEN=secret, SUPABASE_SERVICE_ROLE_KEY="service")
+        self.assertEqual(await supabase_auth(env), ("service", "service"))
+        self.assertEqual(secret.calls, 0)
+
+    async def test_falls_back_on_empty_token(self):
+        env = self.env(
+            SUPABASE_API_TOKEN=FakeSecret(""),
+            SUPABASE_PUBLISHABLE_KEY="publishable",
+            SUPABASE_SERVICE_ROLE_KEY="service",
+        )
+        self.assertEqual(await supabase_auth(env), ("service", "service"))
+
+    async def test_caches_secret_reads_including_failures(self):
+        secret = FakeSecret(error=RuntimeError("not found"))
+        env = self.env(
+            SUPABASE_API_TOKEN=secret,
+            SUPABASE_PUBLISHABLE_KEY="publishable",
+            SUPABASE_SERVICE_ROLE_KEY="service",
+        )
+        await supabase_auth(env)
+        await supabase_auth(env)
+        self.assertEqual(secret.calls, 1)
+
+    async def test_none_when_unconfigured(self):
+        self.assertIsNone(await supabase_auth(self.env()))
+        self.assertIsNone(
+            await supabase_auth(types.SimpleNamespace(SUPABASE_SERVICE_ROLE_KEY="service"))
+        )
 
 
 if __name__ == "__main__":
