@@ -15,7 +15,7 @@ Repository-wide guidance for AI agents working in this monorepo. For the human-f
 | Main site | `blog/` | Astro blog and portfolio. Read `blog/AGENTS.md`; keep its public routes and CNAME stable. |
 | Boopmaster | `apps/boopmaster/` | Static JavaScript/WebAudio dog-photo app; deployed to Cloudflare Pages by the main workflow. |
 | DigDog | `apps/digdog/` | Go/Ebitengine game compiled to WebAssembly; read `apps/digdog/README.md`; checked and deployed by the main workflow. |
-| Metrics worker | `apps/metrics-worker/` | Python Cloudflare Worker, PostHog proxy, Supabase metrics API, tests, and docs. Its tables and RPCs live in the `metrics_worker` schema; it reaches them over PostgREST with `Accept-Profile` / `Content-Profile` headers and the service-role key. |
+| Metrics worker | `apps/metrics-worker/` | Python Cloudflare Worker, PostHog proxy, Supabase metrics API, tests, and docs. Its tables and RPCs live in the `metrics_worker` schema; every call is a PostgREST RPC POST with `Content-Profile: metrics_worker`, authenticated with the AppOps API token (Secrets Store) when `SUPABASE_PUBLISHABLE_KEY` is set and the service-role key otherwise. |
 | Database | `db/supabase/` | Supabase config, schemas, seed data, and timestamped PostgreSQL migrations. |
 | URL shortener | `apps/url-shortener/` | Design spec only; no service implementation or active deployment workflow yet. |
 | AppOps | `infra/appops/` | Pulumi (Go) project that provisions per-app PostgreSQL schemas, roles and grants and publishes credentials to Cloudflare Secrets Store. Applied by hand, not by CI. Read `infra/appops/AGENTS.md` first. |

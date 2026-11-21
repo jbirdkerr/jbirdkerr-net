@@ -97,6 +97,8 @@ class WorkerTestCase(unittest.IsolatedAsyncioTestCase):
         print_patcher = mock.patch("builtins.print")
         print_patcher.start()
         self.addCleanup(print_patcher.stop)
+        worker._api_token_cache.update(value=None, expires_at=0.0)
+        self.addCleanup(worker._api_token_cache.update, value=None, expires_at=0.0)
         self.env = make_env()
         self.ctx = FakeCtx()
 
@@ -159,8 +161,10 @@ class TestRouting(WorkerTestCase):
 
     async def test_metrics_route_records_response_status(self):
         self.fetch.routes = {
-            "/site_metrics": FakeFetchResponse(json_body=[{"updated_at": "2026-11-20T00:00:00Z"}]),
-            "/site_event_counts": FakeFetchResponse(json_body=[]),
+            "/rpc/get_site_metrics": FakeFetchResponse(
+                json_body=[{"updated_at": "2026-11-20T00:00:00Z"}]
+            ),
+            "/rpc/get_site_event_counts": FakeFetchResponse(json_body=[]),
         }
         response = await self.dispatch(FakeRequest("https://metrics-api.jbirdkerr.net/metrics"))
         self.assertEqual(response.status, 200)
@@ -171,7 +175,7 @@ class TestRouting(WorkerTestCase):
     async def test_health_metrics_route_counts_as_metrics(self):
         # The DB function only knows proxy/metrics/health/not_found, so the
         # dashboard endpoint is deliberately counted as "metrics".
-        self.fetch.routes = {"/worker_health_stats": FakeFetchResponse(json_body=[{}])}
+        self.fetch.routes = {"/rpc/get_worker_health_stats": FakeFetchResponse(json_body=[{}])}
         response = await self.dispatch(
             FakeRequest("https://metrics-api.jbirdkerr.net/health-metrics")
         )
@@ -339,10 +343,12 @@ class TestMetricsHandlers(WorkerTestCase):
 
     async def test_metrics_renders_html_from_the_metrics_schema(self):
         self.fetch.routes = {
-            "/site_metrics": FakeFetchResponse(
+            "/rpc/get_site_metrics": FakeFetchResponse(
                 json_body=[{"total_events": 42, "updated_at": "2026-11-20T01:02:03Z"}]
             ),
-            "/site_event_counts": FakeFetchResponse(json_body=[{"event": "boop", "count": 7}]),
+            "/rpc/get_site_event_counts": FakeFetchResponse(
+                json_body=[{"event": "boop", "count": 7}]
+            ),
         }
         response = await worker.handle_metrics(self.env, {"Vary": "Origin"})
         self.assertEqual(response.status, 200)
@@ -350,13 +356,36 @@ class TestMetricsHandlers(WorkerTestCase):
         self.assertEqual(response.headers["X-Metrics-Generated"], "2026-11-20T01:02:03Z")
         self.assertEqual(response.headers["Vary"], "Origin")
         self.assertIn("boop", response.body)
+        [events] = self.fetch.rpc_bodies("get_site_event_counts")
+        self.assertEqual(events, {"p_limit": 30})
         for call in self.fetch.calls:
-            self.assertEqual(call.headers["Accept-Profile"], worker.DB_SCHEMA)
+            self.assertEqual(call.method, "POST")
+            self.assertEqual(call.headers["Content-Profile"], worker.DB_SCHEMA)
+
+    async def test_metrics_uses_the_appops_token_when_available(self):
+        secret = mock.AsyncMock()
+        secret.get.return_value = "app-token"
+        env = make_env()
+        env.SUPABASE_PUBLISHABLE_KEY = "publishable-key"
+        env.SUPABASE_API_TOKEN = secret
+        self.fetch.routes = {
+            "/rpc/get_site_metrics": FakeFetchResponse(
+                json_body=[{"updated_at": "2026-11-20T00:00:00Z"}]
+            ),
+            "/rpc/get_site_event_counts": FakeFetchResponse(json_body=[]),
+        }
+        response = await worker.handle_metrics(env, {})
+        self.assertEqual(response.status, 200)
+        self.assertEqual(len(self.fetch.calls), 2)
+        for call in self.fetch.calls:
+            self.assertEqual(call.headers["apikey"], "publishable-key")
+            self.assertEqual(call.headers["Authorization"], "Bearer app-token")
+        secret.get.assert_awaited_once()
 
     async def test_metrics_upstream_failure_returns_503_uncached(self):
         self.fetch.routes = {
-            "/site_metrics": FakeFetchResponse(status=500),
-            "/site_event_counts": FakeFetchResponse(json_body=[]),
+            "/rpc/get_site_metrics": FakeFetchResponse(status=500),
+            "/rpc/get_site_event_counts": FakeFetchResponse(json_body=[]),
         }
         response = await worker.handle_metrics(self.env, {})
         self.assertEqual(response.status, 503)
@@ -367,7 +396,7 @@ class TestMetricsHandlers(WorkerTestCase):
         self.assertEqual(response.status, 500)
 
     async def test_health_metrics_upstream_exception_returns_503(self):
-        self.fetch.routes = {"/worker_health_stats": ConnectionError("down")}
+        self.fetch.routes = {"/rpc/get_worker_health_stats": ConnectionError("down")}
         response = await worker.handle_health_metrics(self.env, {})
         self.assertEqual(response.status, 503)
         self.assertEqual(response.headers["Cache-Control"], "no-store")
