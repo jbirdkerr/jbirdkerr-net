@@ -9,7 +9,7 @@ import expressiveCode from 'astro-expressive-code';
 // https://astro.build/config
 export default defineConfig({
   site: 'https://jbirdkerr.net',
-  integrations: [mdx(), sitemap(), expressiveCode()],
+  integrations: [expressiveCode(), mdx(), sitemap()],
   vite: { plugins: [tailwindcss()] },
   markdown: {
     shikiConfig: { theme: 'github-dark-dimmed', wrap: true },
