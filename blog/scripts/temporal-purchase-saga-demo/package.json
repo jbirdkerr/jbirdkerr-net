@@ -1,0 +1,15 @@
+{
+  "name": "temporal-purchase-saga-demo-screenshots",
+  "private": true,
+  "type": "module",
+  "description": "Playwright scripts that capture Temporal UI screenshots for the temporal-purchase-saga-demo post.",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "find-orders": "./find-orders.sh",
+    "capture": "./capture.sh"
+  },
+  "devDependencies": {
+    "mermaid": "11.17.2",
+    "playwright": "1.59.1"
+  }
+}
