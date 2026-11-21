@@ -1,7 +1,7 @@
 ---
 title: "Durable Payments on a Laptop: A Temporal Workflow Demo"
 description: A Go order-processing saga built on Temporal, with retries, compensation, and observability, and why I'm not hosting it.
-pubDate: 2026-11-20
+pubDate: 2026-11-15
 tags: [temporal, go, workflows, payments]
 draft: false
 ---
