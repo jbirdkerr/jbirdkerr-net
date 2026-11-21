@@ -41,7 +41,9 @@ Run checks that cover the files changed; do not claim a check ran unless it did.
 - Main CI runs `uv run pre-commit run --all-files`, script tests, and `./pants test ::`.
 - Blog changes: `cd blog && npm ci && npm run build`.
 - DigDog: main CI runs Go vet/tests and the WebAssembly vet/build on every workflow run. Locally, `cd apps/digdog && ./check.sh` runs the same core checks.
-- The metrics-worker tests are included in pre-commit and CI; its tests live in `apps/metrics-worker/tests/`.
-- AppOps: `cd infra/appops && gofmt -l . && go vet ./... && go test ./...`. CI does not run these, so run them for any change under `infra/appops/`.
+- The metrics-worker tests are included in pre-commit and CI; its tests live in `apps/metrics-worker/tests/` (`test_worker.py` for helpers, `test_handlers.py` for routing, the PostHog proxy, and Supabase calls with `fetch` mocked).
+- Boopmaster: main CI runs a Playwright smoke test from `tests/boopmaster/` (kept outside `apps/boopmaster/` so it is not deployed). Locally: `cd tests/boopmaster && npm ci && npx playwright install chromium && npx playwright test`.
+- Database: pgTAP tests live in `db/supabase/tests/`. CI runs them in the `db-tests` job when anything under `db/supabase/` changes. Locally: `cd db && supabase start` (add `-x` to skip unneeded services), then `supabase test db`.
+- AppOps: `cd infra/appops && gofmt -l . && go vet ./... && go test ./...`. CI runs the same checks in the `appops-tests` job when `infra/appops/` or an `apps/*/appops.yaml` changes.
 
 When handing off, summarize the files changed, checks actually run, and any remaining deployment or environment-dependent verification.
