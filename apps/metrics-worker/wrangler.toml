@@ -33,10 +33,12 @@ SUPABASE_URL = "https://tmjvuvyjhweuzgxkqrhg.supabase.co"
 # AppOps API token (infra/appops, `api.enabled` in appops.yaml). Requests run as the worker's own
 # database role. The AppOps stack is named `dev` but targets this project's database. Secrets Store
 # bindings are not available under `wrangler dev`.
-[[env.production.secrets_store_secrets]]
-binding = "SUPABASE_API_TOKEN"
-store_id = "7fe5a14c652845cfa5bb7786a01053e4"
-secret_name = "APP_METRICS_WORKER_DEV_API_TOKEN"
+# Left commented out until the secret exists (AppOps Phase 7, infra/appops/docs/design/PHASE7_LIVE_TEST.md),
+# since a deploy that binds a missing secret may fail. Uncomment together with SUPABASE_PUBLISHABLE_KEY.
+# [[env.production.secrets_store_secrets]]
+# binding = "SUPABASE_API_TOKEN"
+# store_id = "7fe5a14c652845cfa5bb7786a01053e4"
+# secret_name = "APP_METRICS_WORKER_DEV_API_TOKEN"
 
 [observability.logs]
 enabled = true

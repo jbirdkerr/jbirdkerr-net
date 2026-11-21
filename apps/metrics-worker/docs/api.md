@@ -69,7 +69,7 @@ Dynamic CORS preflight handler.
 - `POSTHOG_PROJECT_ID`: PostHog Project ID string.
 - `SUPABASE_URL`: Target Supabase project REST URL (`https://<project-ref>.supabase.co`).
 - `SUPABASE_PUBLISHABLE_KEY`: The project's publishable key, sent as `apikey` with the AppOps token. Public by design. While unset, the worker uses the service-role key.
-- `SUPABASE_API_TOKEN` (Secrets Store binding): the AppOps API token `APP_METRICS_WORKER_DEV_API_TOKEN`, published by `infra/appops`. Read at request time and cached for 5 minutes, so a rotated token needs no redeploy. Not available under `wrangler dev`.
+- `SUPABASE_API_TOKEN` (Secrets Store binding): the AppOps API token `APP_METRICS_WORKER_DEV_API_TOKEN`, published by `infra/appops`. Read at request time and cached for 5 minutes, so a rotated token needs no redeploy. Not available under `wrangler dev`. Commented out in `wrangler.toml` until the secret exists; enable it with `SUPABASE_PUBLISHABLE_KEY`.
 
 ### Secrets (Configured via Wrangler CLI)
 ```bash
