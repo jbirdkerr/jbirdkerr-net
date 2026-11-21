@@ -20,6 +20,11 @@ from urllib.parse import parse_qs, unquote, urlparse
 # profile headers below tell PostgREST to use it instead of the default `public` schema.
 DB_SCHEMA = "metrics_worker"
 
+# How long to reuse the API token read from Secrets Store before reading it again. A rotated token
+# is picked up within this window without a redeploy; a failed read is retried after the same delay.
+API_TOKEN_CACHE_SECONDS = 300
+_api_token_cache = {"value": None, "expires_at": 0.0}
+
 try:
     from pyodide.ffi import create_proxy
     from workers import Response, WorkerEntrypoint, fetch
@@ -334,9 +339,8 @@ def decode_posthog_body(payload_bytes, query_string=None):
 
 
 async def persist_posthog_payload(payload_bytes, env, query_string=None):
-    if not getattr(env, "SUPABASE_URL", None) or not getattr(
-        env, "SUPABASE_SERVICE_ROLE_KEY", None
-    ):
+    auth = await supabase_auth(env)
+    if auth is None:
         print("Supabase environment variables are not configured")
         return
 
@@ -354,12 +358,7 @@ async def persist_posthog_payload(payload_bytes, env, query_string=None):
     persist_start = time.monotonic()
     supabase_failed = False
     try:
-        response = await fetch(
-            f"{env.SUPABASE_URL}/rest/v1/rpc/record_site_events",
-            method="POST",
-            headers=supabase_headers(env, write=True),
-            body=json.dumps({"p_events": events}),
-        )
+        response = await supabase_rpc(env, auth, "record_site_events", {"p_events": events})
 
         if not response.ok:
             error_text = await response.text()
@@ -417,9 +416,8 @@ def normalize_posthog_payload(payload):
 
 
 async def handle_metrics(env, cors_headers):
-    if not getattr(env, "SUPABASE_URL", None) or not getattr(
-        env, "SUPABASE_SERVICE_ROLE_KEY", None
-    ):
+    auth = await supabase_auth(env)
+    if auth is None:
         return Response.json(
             {"error": "Supabase configuration missing"},
             status=500,
@@ -427,11 +425,8 @@ async def handle_metrics(env, cors_headers):
         )
 
     try:
-        summary_response = await supabase_request(env, "/rest/v1/site_metrics?select=*")
-        events_response = await supabase_request(
-            env,
-            "/rest/v1/site_event_counts?select=event,count&order=count.desc&limit=30",
-        )
+        summary_response = await supabase_rpc(env, auth, "get_site_metrics")
+        events_response = await supabase_rpc(env, auth, "get_site_event_counts", {"p_limit": 30})
 
         if not summary_response.ok or not events_response.ok:
             raise Exception(
@@ -467,9 +462,8 @@ async def handle_metrics(env, cors_headers):
 
 
 async def handle_health_metrics(env, cors_headers):
-    if not getattr(env, "SUPABASE_URL", None) or not getattr(
-        env, "SUPABASE_SERVICE_ROLE_KEY", None
-    ):
+    auth = await supabase_auth(env)
+    if auth is None:
         return Response.json(
             {"error": "Supabase configuration missing"},
             status=500,
@@ -477,7 +471,7 @@ async def handle_health_metrics(env, cors_headers):
         )
 
     try:
-        response = await supabase_request(env, "/rest/v1/worker_health_stats?select=*")
+        response = await supabase_rpc(env, auth, "get_worker_health_stats")
         if not response.ok:
             raise Exception(f"Supabase health query failed: {response.status}")
 
@@ -505,29 +499,73 @@ async def handle_health_metrics(env, cors_headers):
         )
 
 
-def supabase_headers(env, write=False):
-    """Headers for PostgREST calls to the metrics schema.
+async def read_api_token(env):
+    """Return the AppOps API token from the Secrets Store binding, or None.
 
-    PostgREST selects a non-default schema with Accept-Profile (GET/HEAD) or
-    Content-Profile (POST, PATCH, DELETE, and RPC calls).
+    The value is cached for API_TOKEN_CACHE_SECONDS, including a failed or empty read, so a
+    missing secret costs one lookup per window rather than one per request.
     """
-    headers = {
-        "apikey": env.SUPABASE_SERVICE_ROLE_KEY,
-        "Authorization": f"Bearer {env.SUPABASE_SERVICE_ROLE_KEY}",
+    binding = getattr(env, "SUPABASE_API_TOKEN", None)
+    if binding is None:
+        return None
+
+    now = time.monotonic()
+    if now < _api_token_cache["expires_at"]:
+        return _api_token_cache["value"]
+
+    token = None
+    try:
+        token = await binding.get()
+    except Exception as error:
+        print(f"Supabase API token unavailable, using the fallback credential: {error}")
+    _api_token_cache["value"] = token or None
+    _api_token_cache["expires_at"] = now + API_TOKEN_CACHE_SECONDS
+    return _api_token_cache["value"]
+
+
+async def supabase_auth(env):
+    """Return (apikey, bearer) for PostgREST, or None when Supabase is not configured.
+
+    Prefers the AppOps API token, which runs requests as the worker's own database role and is
+    sent with the project's publishable key as `apikey`. Falls back to SUPABASE_SERVICE_ROLE_KEY
+    while the token or the publishable key is not available.
+    """
+    if not getattr(env, "SUPABASE_URL", None):
+        return None
+
+    publishable_key = getattr(env, "SUPABASE_PUBLISHABLE_KEY", None)
+    if publishable_key:
+        token = await read_api_token(env)
+        if token:
+            return publishable_key, token
+
+    service_role_key = getattr(env, "SUPABASE_SERVICE_ROLE_KEY", None)
+    if service_role_key:
+        return service_role_key, service_role_key
+    return None
+
+
+def supabase_headers(auth):
+    """Headers for a PostgREST RPC call in the metrics schema.
+
+    Every call is a POST to /rest/v1/rpc/..., and PostgREST selects a non-default schema for
+    those with Content-Profile.
+    """
+    apikey, bearer = auth
+    return {
+        "apikey": apikey,
+        "Authorization": f"Bearer {bearer}",
+        "Content-Type": "application/json",
+        "Content-Profile": DB_SCHEMA,
     }
-    if write:
-        headers["Content-Type"] = "application/json"
-        headers["Content-Profile"] = DB_SCHEMA
-    else:
-        headers["Accept-Profile"] = DB_SCHEMA
-    return headers
 
 
-async def supabase_request(env, path, method="GET"):
+async def supabase_rpc(env, auth, function, args=None):
     return await fetch(
-        f"{env.SUPABASE_URL}{path}",
-        method=method,
-        headers=supabase_headers(env),
+        f"{env.SUPABASE_URL}/rest/v1/rpc/{function}",
+        method="POST",
+        headers=supabase_headers(auth),
+        body=json.dumps(args or {}),
     )
 
 
@@ -542,9 +580,8 @@ async def record_worker_health(
     posthog_proxy_failed=False,
 ):
     """Fire-and-forget health stats recording to Supabase."""
-    if not getattr(env, "SUPABASE_URL", None) or not getattr(
-        env, "SUPABASE_SERVICE_ROLE_KEY", None
-    ):
+    auth = await supabase_auth(env)
+    if auth is None:
         return
     try:
         body = {
@@ -562,12 +599,7 @@ async def record_worker_health(
         if posthog_proxy_failed:
             body["p_posthog_proxy_failed"] = True
 
-        await fetch(
-            f"{env.SUPABASE_URL}/rest/v1/rpc/record_worker_health",
-            method="POST",
-            headers=supabase_headers(env, write=True),
-            body=json.dumps(body),
-        )
+        await supabase_rpc(env, auth, "record_worker_health", body)
     except Exception as error:
         print(f"Worker health recording failed: {error}")
 

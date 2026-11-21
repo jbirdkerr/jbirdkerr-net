@@ -81,7 +81,8 @@ flowchart TD
 - **Top Breakdown (`site_event_counts`)**: Upsert-tracked counters per event type for fast breakdown rendering.
 - **Audit Log (`site_events`)**: Append-only log of raw interaction payloads.
 - **Atomic Stored Procedure (`record_site_events`)**: Executes batch processing within a single database transaction to guarantee consistency and minimize connection round-trips.
-- **Dedicated schema (`metrics_worker`)**: The tables and RPCs live in their own schema, provisioned by AppOps (`infra/appops`). The worker selects it with PostgREST `Accept-Profile` / `Content-Profile` headers, and the schema must be an exposed API schema. The worker still authenticates with the Supabase service-role key; it does not use the AppOps database credential.
+- **Dedicated schema (`metrics_worker`)**: The tables and RPCs live in their own schema, provisioned by AppOps (`infra/appops`). Every database call is a `SECURITY DEFINER` RPC (`record_*` writes, `get_*` reads) sent with a `Content-Profile: metrics_worker` header, and the schema must be an exposed API schema. Only `service_role` and the worker's AppOps role can execute them.
+- **Credentials**: The worker prefers its AppOps API token (Secrets Store binding `SUPABASE_API_TOKEN`, sent with the project's publishable key), which runs requests as `app_metrics_worker_<env>` and cannot reach other schemas. It falls back to the project-wide `SUPABASE_SERVICE_ROLE_KEY` while `SUPABASE_PUBLISHABLE_KEY` is unset or the token cannot be read. See `infra/appops/docs/OPERATIONS.md`.
 
 ### 4. Analytics Tier (PostHog Cloud)
 - Ingests raw session event data for long-term analytics, user session exploration, and retention analysis without bogging down operational transactional databases.

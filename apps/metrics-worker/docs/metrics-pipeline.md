@@ -72,10 +72,10 @@ sequenceDiagram
     else Cache Miss
         Cache->>Worker: Invoke handle_metrics()
         par Query Summary & Events
-            Worker->>DB: GET /rest/v1/site_metrics?select=*
+            Worker->>DB: POST /rest/v1/rpc/get_site_metrics
             DB-->>Worker: Summary row JSON
         and Query Event Breakdown
-            Worker->>DB: GET /rest/v1/site_event_counts?order=count.desc&limit=30
+            Worker->>DB: POST /rest/v1/rpc/get_site_event_counts (p_limit 30)
             DB-->>Worker: Event counts JSON
         end
         Worker->>Worker: Filter out internal ($*) events & render HTML
