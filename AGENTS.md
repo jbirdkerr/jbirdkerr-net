@@ -6,7 +6,7 @@ Repository-wide guidance for AI agents working in this monorepo. For the human-f
 
 - Treat tracked source, tests, and `.github/workflows/` as evidence of what runs today. `repo-spec.md` is marked draft and contains design proposals and older assumptions; use it for intent, not as proof of current deployment behavior.
 - The main workflow, [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), validates pull requests and pushes to `main`. Its deploy job runs only for `main` pushes or manual dispatch and has steps for Supabase migrations, Boopmaster, DigDog, the metrics worker, and the blog. The Supabase migrations step is normally a no-op (no `SUPABASE_ACCESS_TOKEN` in CI): the Supabase GitHub integration applies `db/supabase/migrations/` when changes reach `main`, independently of this workflow, so migration-before-deploy ordering is not guaranteed. The `db` unit still matters because `metrics-worker` depends on it in `deploy/units.toml`.
-- DigDog's Go vet/tests and WebAssembly vet/build run in the main validation job. Its production deployment downloads the validated build artifact and runs only when `deploy/units.toml` marks `digdog` as affected. The manifest detects changed units; it does not create build or deploy steps by itself.
+- Validation runs as parallel jobs (lint and script tests, Pants tests, Boopmaster smoke tests, DigDog checks and build), and deploy waits for all of them. DigDog's Go vet/tests and WebAssembly vet/build run in the `digdog` job. Its production deployment downloads the validated build artifact and runs only when `deploy/units.toml` marks `digdog` as affected. The manifest detects changed units; it does not create build or deploy steps by itself.
 
 ## Project map
 
@@ -41,7 +41,9 @@ Run checks that cover the files changed; do not claim a check ran unless it did.
 - Main CI runs `uv run pre-commit run --all-files`, script tests, and `./pants test ::`.
 - Blog changes: `cd blog && npm ci && npm run build`.
 - DigDog: main CI runs Go vet/tests and the WebAssembly vet/build on every workflow run. Locally, `cd apps/digdog && ./check.sh` runs the same core checks.
-- The metrics-worker tests are included in pre-commit and CI; its tests live in `apps/metrics-worker/tests/`.
-- AppOps: `cd infra/appops && gofmt -l . && go vet ./... && go test ./...`. CI does not run these, so run them for any change under `infra/appops/`.
+- The metrics-worker tests are included in pre-commit and CI; its tests live in `apps/metrics-worker/tests/` (`test_worker.py` for helpers, `test_handlers.py` for routing, the PostHog proxy, and Supabase calls with `fetch` mocked).
+- Boopmaster: main CI runs a Playwright smoke test from `tests/boopmaster/` (kept outside `apps/boopmaster/` so it is not deployed). Locally: `cd tests/boopmaster && npm ci && npx playwright install chromium && npx playwright test`.
+- Database: pgTAP tests live in `db/supabase/tests/`. CI runs them in the `db-tests` job when anything under `db/supabase/` changes. Locally: `cd db && supabase start` (add `-x` to skip unneeded services), then `supabase test db`.
+- AppOps: `cd infra/appops && gofmt -l . && go vet ./... && go test ./...`. CI runs the same checks in the `appops-tests` job when `infra/appops/` or an `apps/*/appops.yaml` changes.
 
 When handing off, summarize the files changed, checks actually run, and any remaining deployment or environment-dependent verification.

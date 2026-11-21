@@ -1,0 +1,14 @@
+{
+  "name": "boopmaster-smoke",
+  "private": true,
+  "type": "module",
+  "description": "Playwright smoke tests for apps/boopmaster. Kept outside apps/boopmaster so they are not deployed with the site.",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "htmx.org": "2.0.11"
+  }
+}

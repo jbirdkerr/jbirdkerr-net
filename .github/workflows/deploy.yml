@@ -23,29 +23,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
-    name: Lint, Test & Validate
+  # Validation is split into independent jobs so they run in parallel. Deploy waits for all of them.
+  lint:
+    name: Lint & script tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
 
       - name: Install Python 3.12 via uv
         run: uv python install 3.12
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: "blog/package-lock.json"
 
       - name: Run pre-commit hooks
         run: uv run pre-commit run --all-files
@@ -53,13 +47,67 @@ jobs:
       - name: Run script tests
         run: PYTHONPATH=. uv run python -m unittest scripts/test_detect_changed_units.py
 
+  pants:
+    name: Pants tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.12 via uv
+        run: uv python install 3.12
+
+      # blog:test runs `npm ci && npm run build`.
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "blog/package-lock.json"
+
       - name: Run Pants tests across monorepo
         run: |
           ./pants --version
           ./pants test ::
 
+  boopmaster-smoke:
+    name: Boopmaster smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "tests/boopmaster/package-lock.json"
+
+      - name: Install dependencies
+        working-directory: tests/boopmaster
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run smoke tests
+        working-directory: tests/boopmaster
+        run: npx playwright test
+
+  digdog:
+    name: DigDog checks & build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: "apps/digdog/go.mod"
           cache-dependency-path: "apps/digdog/go.sum"
@@ -91,16 +139,113 @@ jobs:
 
       - name: Upload DigDog site artifact
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: digdog-web
           path: apps/digdog/web/
           if-no-files-found: error
           retention-days: 1
 
+  # Path-scoped test jobs. These check pull requests and pushes; they do not gate the
+  # deploy job below.
+  changes:
+    name: Detect test scopes
+    runs-on: ubuntu-latest
+    outputs:
+      db: ${{ steps.filter.outputs.db }}
+      appops: ${{ steps.filter.outputs.appops }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Find changed paths
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) base="" ;;
+          esac
+          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "No usable base commit; running every scoped test job."
+            { echo "db=true"; echo "appops=true"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed="$(git diff --name-only "$base" HEAD)"
+          matches() { grep -qE "$1" <<<"$changed" && echo true || echo false; }
+          {
+            echo "db=$(matches '^db/supabase/')"
+            echo "appops=$(matches '^(infra/appops/|apps/[^/]+/appops\.yaml$)')"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  db-tests:
+    name: Database tests (pgTAP)
+    needs: changes
+    if: needs.changes.outputs.db == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 3.1.0
+
+      # Only Postgres is needed: migrations and seed are applied on start, and
+      # `supabase test db` runs pg_prove against it.
+      - name: Start local Supabase (Postgres only)
+        working-directory: db
+        run: >-
+          supabase start
+          -x gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+
+      - name: Run pgTAP tests
+        working-directory: db
+        run: supabase test db
+
+  appops-tests:
+    name: AppOps Go checks
+    needs: changes
+    if: needs.changes.outputs.appops == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: "infra/appops/go.mod"
+          cache-dependency-path: "infra/appops/go.sum"
+
+      # Same checks as infra/appops/AGENTS.md. Tests use Pulumi mocks and need no
+      # database, credentials, or Pulumi state.
+      - name: gofmt
+        working-directory: infra/appops
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "Files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        working-directory: infra/appops
+        run: go vet ./...
+
+      - name: go test
+        working-directory: infra/appops
+        run: go test ./...
+
   deploy:
     name: Deploy Affected Units
-    needs: validate
+    needs: [lint, pants, boopmaster-smoke, digdog]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     environment:
@@ -108,17 +253,17 @@ jobs:
       url: ${{ steps.deploy_pages.outputs.page_url }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "npm"
@@ -194,7 +339,7 @@ jobs:
       # -------------------------------------------------------------
       - name: Download DigDog site artifact
         if: steps.detect.outputs.digdog == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: digdog-web
           path: apps/digdog/web
@@ -233,14 +378,14 @@ jobs:
 
       - name: Upload GitHub Pages artifact
         if: steps.detect.outputs.blog == 'true'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: blog/dist
 
       - name: Deploy to GitHub Pages
         if: steps.detect.outputs.blog == 'true'
         id: deploy_pages
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
       # -------------------------------------------------------------
       # 6. Smoke Tests

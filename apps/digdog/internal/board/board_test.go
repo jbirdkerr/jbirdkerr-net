@@ -185,3 +185,50 @@ func TestStreak(t *testing.T) {
 		t.Errorf("got MaxStreak %d, want 1", b6.MaxStreak)
 	}
 }
+
+// TestNewBoardDealsEachFaceTwice verifies that a shuffled deal contains every
+// face exactly twice, starts with all cards buried, and has the requested shape.
+// It runs several deals so a shuffle bug is unlikely to slip through by chance.
+func TestNewBoardDealsEachFaceTwice(t *testing.T) {
+	const cols, rows = 4, 3
+	for deal := 0; deal < 20; deal++ {
+		b := NewBoard(cols, rows)
+		if b.Cols() != cols || b.Rows() != rows || b.Len() != cols*rows {
+			t.Fatalf("deal %d: got %dx%d with %d cards, want %dx%d with %d",
+				deal, b.Cols(), b.Rows(), b.Len(), cols, rows, cols*rows)
+		}
+		counts := map[int]int{}
+		for i := 0; i < b.Len(); i++ {
+			c := b.Card(i)
+			if c.State != Buried {
+				t.Fatalf("deal %d: card %d starts in state %v, want Buried", deal, i, c.State)
+			}
+			counts[c.Face]++
+		}
+		if len(counts) != cols*rows/2 {
+			t.Fatalf("deal %d: got %d distinct faces, want %d", deal, len(counts), cols*rows/2)
+		}
+		for face, n := range counts {
+			if face < 0 || face >= cols*rows/2 {
+				t.Fatalf("deal %d: face %d out of range [0,%d)", deal, face, cols*rows/2)
+			}
+			if n != 2 {
+				t.Fatalf("deal %d: face %d dealt %d times, want 2", deal, face, n)
+			}
+		}
+		if b.Moves != 0 || b.Streak != 0 || b.Won {
+			t.Fatalf("deal %d: new board has Moves=%d Streak=%d Won=%v", deal, b.Moves, b.Streak, b.Won)
+		}
+	}
+}
+
+// TestNewBoardOddCellsPanics verifies that a board with an odd number of
+// cells is rejected, since every card needs a partner.
+func TestNewBoardOddCellsPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("NewBoard(3, 3) did not panic; want panic for odd cell count")
+		}
+	}()
+	NewBoard(3, 3)
+}

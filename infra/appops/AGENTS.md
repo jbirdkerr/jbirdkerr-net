@@ -44,7 +44,7 @@ go vet ./...
 go test ./...
 ```
 
-Root `uv run pre-commit run --all-files` covers the Markdown and YAML checks. CI does **not** run the AppOps Go checks, so run them yourself. Tests use Pulumi mocks and need no database.
+Root `uv run pre-commit run --all-files` covers the Markdown and YAML checks. CI runs these same Go checks in the `appops-tests` job when `infra/appops/` or an `apps/*/appops.yaml` changes; run them yourself before pushing. Tests use Pulumi mocks and need no database.
 
 ## Documentation
 
