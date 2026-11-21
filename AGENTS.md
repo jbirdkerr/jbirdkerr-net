@@ -6,7 +6,7 @@ Repository-wide guidance for AI agents working in this monorepo. For the human-f
 
 - Treat tracked source, tests, and `.github/workflows/` as evidence of what runs today. `repo-spec.md` is marked draft and contains design proposals and older assumptions; use it for intent, not as proof of current deployment behavior.
 - The main workflow, [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), validates pull requests and pushes to `main`. Its deploy job runs only for `main` pushes or manual dispatch and has steps for Supabase migrations, Boopmaster, DigDog, the metrics worker, and the blog. The Supabase migrations step is normally a no-op (no `SUPABASE_ACCESS_TOKEN` in CI): the Supabase GitHub integration applies `db/supabase/migrations/` when changes reach `main`, independently of this workflow, so migration-before-deploy ordering is not guaranteed. The `db` unit still matters because `metrics-worker` depends on it in `deploy/units.toml`.
-- DigDog's Go vet/tests and WebAssembly vet/build run in the main validation job. Its production deployment downloads the validated build artifact and runs only when `deploy/units.toml` marks `digdog` as affected. The manifest detects changed units; it does not create build or deploy steps by itself.
+- Validation runs as parallel jobs (lint and script tests, Pants tests, Boopmaster smoke tests, DigDog checks and build), and deploy waits for all of them. DigDog's Go vet/tests and WebAssembly vet/build run in the `digdog` job. Its production deployment downloads the validated build artifact and runs only when `deploy/units.toml` marks `digdog` as affected. The manifest detects changed units; it does not create build or deploy steps by itself.
 
 ## Project map
 

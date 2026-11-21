@@ -23,8 +23,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
-    name: Lint, Test & Validate
+  # Validation is split into independent jobs so they run in parallel. Deploy waits for all of them.
+  lint:
+    name: Lint & script tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -40,35 +41,70 @@ jobs:
       - name: Install Python 3.12 via uv
         run: uv python install 3.12
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: |
-            blog/package-lock.json
-            tests/boopmaster/package-lock.json
-
       - name: Run pre-commit hooks
         run: uv run pre-commit run --all-files
 
       - name: Run script tests
         run: PYTHONPATH=. uv run python -m unittest scripts/test_detect_changed_units.py
 
+  pants:
+    name: Pants tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.12 via uv
+        run: uv python install 3.12
+
+      # blog:test runs `npm ci && npm run build`.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "blog/package-lock.json"
+
       - name: Run Pants tests across monorepo
         run: |
           ./pants --version
           ./pants test ::
 
-      - name: Install Boopmaster smoke test dependencies
+  boopmaster-smoke:
+    name: Boopmaster smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "tests/boopmaster/package-lock.json"
+
+      - name: Install dependencies
         working-directory: tests/boopmaster
         run: |
           npm ci
           npx playwright install --with-deps chromium
 
-      - name: Run Boopmaster smoke tests
+      - name: Run smoke tests
         working-directory: tests/boopmaster
         run: npx playwright test
+
+  digdog:
+    name: DigDog checks & build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -111,7 +147,7 @@ jobs:
           retention-days: 1
 
   # Path-scoped test jobs. These check pull requests and pushes; they do not gate the
-  # deploy job below, which still depends only on `validate`.
+  # deploy job below.
   changes:
     name: Detect test scopes
     runs-on: ubuntu-latest
@@ -209,7 +245,7 @@ jobs:
 
   deploy:
     name: Deploy Affected Units
-    needs: validate
+    needs: [lint, pants, boopmaster-smoke, digdog]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     environment:
