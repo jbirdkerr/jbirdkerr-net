@@ -1,0 +1,39 @@
+%% Order saga, adapted from the temporal-order-processing README.
+%% Changes from the README: compensation paths are dashed, and the delivery-confirmation
+%% failure path (which has no compensation) is shown.
+flowchart TD
+    Start([Order placed]) --> Step1[1. Fraud check]
+
+    Step1 -->|Flagged| FailFraud([Failed])
+    Step1 -->|Passed| Step2[2. Process payment]
+
+    Step2 -->|Declined / retries exhausted| FailPay([Failed])
+    Step2 -->|Paid| Step3[3. Reserve inventory]
+
+    Step3 -.->|Out of stock| Comp1[Refund payment]
+    Comp1 -.-> FailInv([Failed])
+    Step3 -->|Needs approval| Wait{Wait for approveInventory<br/>signal, 24h timer}
+    Step3 -->|Reserved| Step4[4. Ship order]
+
+    Wait -.->|Denied / timed out| Comp2[Release inventory,<br/>refund payment]
+    Comp2 -.-> FailApproval([Failed])
+    Wait -->|Approved| Step4
+
+    Step4 -.->|Carrier error, retries exhausted| Comp3[Release inventory,<br/>refund payment]
+    Comp3 -.-> FailShip([Failed])
+    Step4 -->|Shipped| Step5[5. Confirm delivery]
+
+    Step5 -->|Not confirmed| FailDelivery([Failed, no compensation])
+    Step5 -->|Delivered| Step6[6. Send notification]
+    Step6 --> Done([Delivered])
+
+    classDef step fill:#0f172a,stroke:#60a5fa,color:#e2e8f0
+    classDef wait fill:#0f172a,stroke:#38bdf8,color:#e2e8f0
+    classDef comp fill:#1e1033,stroke:#a855f7,color:#e9d5ff,stroke-dasharray:5 4
+    classDef fail fill:#2a0f14,stroke:#f87171,color:#fecaca
+    classDef ok fill:#052e1a,stroke:#4ade80,color:#bbf7d0
+    class Step1,Step2,Step3,Step4,Step5,Step6 step
+    class Wait wait
+    class Comp1,Comp2,Comp3 comp
+    class FailFraud,FailPay,FailInv,FailApproval,FailShip,FailDelivery fail
+    class Start,Done ok
